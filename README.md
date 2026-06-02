@@ -8,7 +8,7 @@ Each subfolder is a self-contained, deployable package with its own README and q
 
 | Folder | What it does |
 |---|---|
-| [`VulnerabilityManagement/`](./VulnerabilityManagement) | Bulk export of all software vulnerabilities (including `DiskPaths` folder paths) from Microsoft Defender for Endpoint at scale, without per-machine API throttling. Uses the `SoftwareVulnerabilitiesExport` "via files" endpoint. |
+| [`VulnerabilityManagement/ExportFullInventory/`](./VulnerabilityManagement/ExportFullInventory) | Bulk export of all software vulnerabilities (including `DiskPaths` folder paths) from Microsoft Defender for Endpoint at scale, without per-machine API throttling. Uses the `SoftwareVulnerabilitiesExport` "via files" endpoint. |
 
 ## License
 
