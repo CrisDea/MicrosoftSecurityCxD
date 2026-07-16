@@ -1,4 +1,5 @@
-[![OpenSSF Scorecard][https://api.scorecard.dev/projects/github.com/%7Bowner%7D/%7Brepo%7D/badge)](https://scorecard.dev/viewer/?uri=github.com/%7Bowner%7D/%7Brepo%7D)]
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/CrisDea/MicrosoftSecurityCxD
+/badge)](https://scorecard.dev/viewer/?uri=github.com/{owner}/{repo})
 # Microsoft Security CxD
 
 Customer-deployable proofs-of-concept, scripts, and tooling for Microsoft Security products — built by the Microsoft UK CSU Security team for use in customer engagements.
