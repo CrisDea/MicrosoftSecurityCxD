@@ -21,3 +21,8 @@ cache.abf
 # Local Trend->Defender mapping preview (contains device data)
 deploy/trend-migration-mapping.csv
 trend-migration-mapping.csv
+
+# Local Trend master store (accumulated device list - contains customer data)
+deploy/trend-inventory.local.csv
+trend-inventory.local.csv
+*.local.csv

@@ -117,6 +117,7 @@ pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -WorkspaceId
 | `-SkipRefresh` | Publish without triggering a dataset refresh. |
 | `-SkipSchedule` | Publish without enabling the scheduled refresh. |
 | `-TrendCsv` | Path to a Trend Micro device export (CSV). At deploy time each Trend device is matched to the current Defender inventory and the result is embedded in the **TrendMigration** table (see *Trend Micro migration mapping*). Omit to leave the table empty. |
+| `-TrendMode` | `Replace` (default) — the supplied export becomes the whole Trend list; `Append` adds only new devices to the git-ignored local master store. Both de-duplicate on the Trend id. Also settable as `trendMode` in config.json. |
 | `-MatchThreshold` | Domain-suffix fuzzy-match acceptance score (0–100). The short hostname must always match exactly; this governs only how much the DNS domain may differ. Default `82`. Lower to accept looser domains; raise to require closer domains. |
 | `-RemovedAfterDays` | Noise filter. When > 0, devices whose Defender "last seen" is older than this many days are excluded from the model (treated as decommissioned). Default `0` = keep all. Also settable as `removedAfterDays` in config.json. |
 | `-RefreshTimes` | Times of day (`HH:mm`) for the scheduled refresh. Default: 2×/day (06:00, 18:00) — TVM snapshot tables refresh ~daily. |
@@ -215,9 +216,11 @@ Configuration Drill-down and Trend Migration pages these are presented as cards 
 The **Trend Migration** page answers "which of the devices in my Trend Micro estate are now in
 Defender, and which still need migrating?" — using your Trend export as the source of truth.
 
-- **Source of truth** — a CSV exported from Trend Micro (any column that holds the device/host name
-  is auto-detected). Pass it with `-TrendCsv <path>` on `Deploy-Dashboard.ps1`, or preview/ingest it
-  with the standalone `deploy/Import-TrendInventory.ps1`.
+- **Source of truth** — a CSV exported from Trend Micro. The **unique Trend id** (Apex One `GUID`,
+  Deep Security `Host GUID`) and the **host-name** column are auto-detected; the id is the
+  de-duplication key. Pass it with `-TrendCsv <path>` on `Deploy-Dashboard.ps1`, or preview/ingest it
+  with the standalone `deploy/Import-TrendInventory.ps1`. Imports **Replace** the list by default or
+  **Append** new devices only (see *Replace vs Append* below).
 - **Matched against the same inventory as the dashboard** — the current Defender device list is read
   from the paged `GET /api/machines` export endpoint (the same source as DeviceHealth), so the
   mapping never disagrees with the rest of the report. Only `Machine.Read.All` is required.
@@ -238,32 +241,66 @@ Defender, and which still need migrating?" — using your Trend export as the so
 
 ### Trend CSV format
 
-The ingest is deliberately forgiving about layout — you can hand it a raw Trend Micro export:
+The ingest reads a CSV and needs only two things per device — its **unique Trend id** and its
+**host name** — so you can hand it a raw Trend Micro export or a minimal hand-built list.
 
-- **One row per device.** Extra columns are ignored.
-- **A host-name column is required.** The header is auto-detected from common Trend/EDR export names,
-  including `Endpoint Name`, `Host Name`, `Hostname`, `Computer Name`, `Device Name`, `Machine Name`,
-  `Endpoint`, `Client Computer Name`, `FQDN`, and `Name`. If none is found the script errors and lists
-  the headers it saw — rename your column to one of the above (or the first column is used as a last
-  resort).
+**Columns ingested (the bare minimum):**
+
+| Field | Purpose | Auto-detected from |
+|-------|---------|--------------------|
+| **Trend id** (required for de-dup) | The tool's own unique device identifier — the de-duplication key across imports | Apex One `GUID`; Deep Security `Host GUID` (preferred) or `Agent GUID`; or a `TrendId` column |
+| **Device name** (required) | Host/endpoint name — matched against the Defender inventory | `Endpoint`, `Endpoint Name`, `Host Name`, `Hostname`, `Computer Name`, `Device Name`, `Machine Name`, `Name`, `DeviceName` |
+| **Trend source** (optional) | Which Trend product the row came from (for reporting) | Inferred from the header signature (Apex One vs Deep Security), a `TrendSource` column, or the `-Source` override |
+
+Everything else in the export is ignored. Both native Trend exports work as-is:
+
+- **Apex One – Security Agents** export → id `GUID`, name `Endpoint`, source auto-detected as *Apex One*.
+- **Deep Security – Computers** export → id `Host GUID`, name `Name`, source auto-detected as *Deep Security*.
+
+Notes:
+
 - **FQDN or short hostname both accepted.** `WS01`, `WS01.contoso.com`, and the AD form `WS01$` all
   resolve to the same host. Only the part **before the first dot** is treated as the hostname; the
   rest is the domain suffix used for the domain-only fuzzy step.
+- **De-duplication is keyed on the Trend id.** The same device appearing twice (or re-imported) is
+  counted once. When a row has no usable id, a normalised `host|source` key is used as a fallback.
 - **Encoding/quoting** — a standard comma-separated, UTF-8 CSV with a header row. Values may be quoted.
+- **`.xls`/`.xlsx` exports must be saved as CSV first.** Trend consoles (and sensitivity-label /
+  IRM-protected exports) often produce `.xls`; open it and *Save As → CSV UTF-8* before ingesting.
 
-Example (`trend-export.csv`):
+Minimal hand-built list (matches the starter template):
 
 ```csv
-Endpoint Name,Domain,Last Scan,Agent Version
-WS01.contoso.com,CONTOSO,2026-07-15,14.0
-WS02.contoso.local,CONTOSO,2026-07-14,14.0
-FILESERVER01,CONTOSO,2026-07-15,14.0
+TrendId,DeviceName,TrendSource
+11111111-1111-1111-1111-111111111111,WS01.contoso.com,Apex One
+22222222-2222-2222-2222-222222222222,FILESERVER01,Deep Security
 ```
 
 A blank, header-only starter is provided at
 [`templates/trend-inventory-template.csv`](templates/trend-inventory-template.csv) — copy it, add one
 row per Trend device, and pass the file with `-TrendCsv`. It ships with **no rows** (structure only);
 the repository never contains real or sample device data.
+
+### Replace vs Append (updating the ingested list)
+
+Every import merges into a **local master store** (`deploy/trend-inventory.local.csv`, git-ignored —
+it holds customer device data). Two modes control how future imports update that list:
+
+| Mode | Behaviour | Use when |
+|------|-----------|----------|
+| **Replace** (default) | The supplied export becomes the entire Trend list (wipes the previous one), de-duplicated on the Trend id. | You have a single, complete export and want the list to mirror it exactly. |
+| **Append** | Keeps everything already ingested and adds only the export's **new** devices (de-duplicated on the Trend id). | You are building one estate view from several partial exports (e.g. Apex One + Deep Security, or per-region files) over time. |
+
+```powershell
+# Replace (default): this export IS the whole list
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\apex-one.csv -ConfigPath .\deploy\config.json -Materialize
+
+# Append: add Deep Security devices to the existing Apex One list (new items only)
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\deep-security.csv -ConfigPath .\deploy\config.json -Mode Append -Materialize
+```
+
+To start over, delete `deploy/trend-inventory.local.csv` (or run any `-Mode Replace` import), and use
+`Import-TrendInventory.ps1 -RestorePlaceholder` to clear the model table before committing.
 
 ### How to ingest the Trend asset list
 
@@ -278,8 +315,9 @@ You need: a Trend Micro device export as CSV (see *Trend CSV format* above — o
 #    Prints a table and writes trend-migration-mapping.csv for review.
 pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json
 
-# 2. (Optional) tune domain tolerance, then re-preview.
+# 2. (Optional) tune domain tolerance, or append instead of replace, then re-preview.
 pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json -MatchThreshold 90
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\deep-security.csv -ConfigPath .\deploy\config.json -Mode Append
 
 # 3. Embed the reviewed mapping into the TrendMigration table.
 pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json -Materialize
@@ -292,11 +330,14 @@ pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath .\deploy\config.json -Wait
 
 ```powershell
 pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath .\deploy\config.json -TrendCsv .\trend-export.csv -Wait
+# Append a second export on a later deploy:
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath .\deploy\config.json -TrendCsv .\deep-security.csv -TrendMode Append -Wait
 ```
 
 Re-run whenever the Trend export changes. To clear the mapping, run
 `Import-TrendInventory.ps1 -RestorePlaceholder` (no CSV needed) and redeploy. You can also set
-`"trendCsv"` in `config.json` so the export is picked up automatically on every deploy.
+`"trendCsv"`, `"trendMode"`, and `"trendSource"` in `config.json` so the export is picked up
+automatically on every deploy.
 
 ## Output & sharing
 

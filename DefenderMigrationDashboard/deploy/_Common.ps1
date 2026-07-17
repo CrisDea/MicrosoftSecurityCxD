@@ -664,27 +664,163 @@ function Get-NameSimilarity {
     return [int][Math]::Round((1.0 - ($d / [double]$max)) * 100.0)
 }
 
-function Get-TrendDeviceNames {
-    <# Reads a Trend Micro CSV export and returns the device/host names. Auto-detects the host-name
-       column from common Trend header names, else falls back to the first column. #>
-    param([string]$TrendCsv)
+function Resolve-TrendColumn {
+    <# Picks the first header from a candidate list that matches (case/space-insensitive), else the
+       first header whose name matches the -Fallback regex, else $null. #>
+    param([string[]]$Columns, [string[]]$Candidates, [string]$Fallback)
+    foreach ($c in $Candidates) {
+        $hit = $Columns | Where-Object { $_.Trim().ToLowerInvariant() -eq $c.ToLowerInvariant() } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    if ($Fallback) {
+        $hit = $Columns | Where-Object { $_.ToLowerInvariant() -match $Fallback } | Select-Object -First 1
+        if ($hit) { return $hit }
+    }
+    return $null
+}
+
+function Get-TrendSourceFromColumns {
+    <# Infers the Trend product from an export's header signature. Deep Security exposes 'Host GUID'
+       / 'Agent GUID'; Apex One exposes a bare 'GUID' alongside 'Endpoint'/'Scan Method'. Falls back
+       to the generic label 'Trend'. #>
+    param([string[]]$Columns)
+    $lc = $Columns | ForEach-Object { $_.Trim().ToLowerInvariant() }
+    if ($lc -contains 'host guid' -or $lc -contains 'agent guid') { return 'Deep Security' }
+    if ($lc -contains 'guid' -and ($lc -contains 'endpoint' -or $lc -contains 'scan method')) { return 'Apex One' }
+    return 'Trend'
+}
+
+function Get-TrendDeviceRecords {
+    <# Reads a Trend Micro CSV export (native Apex One / Deep Security export, or the normalised
+       TrendId,DeviceName,TrendSource template) and returns one record per row with the minimum
+       fields the dashboard ingests:
+
+         TrendId     - the tool's own unique device identifier (Apex One 'GUID', Deep Security
+                       'Host GUID' preferred over 'Agent GUID'), used as the de-duplication key.
+         DeviceName  - the host/endpoint name, used to match against the Defender inventory.
+         TrendSource - which Trend product the row came from (auto-detected, or -Source override).
+
+       The host-name and id columns are auto-detected from common Trend header names; -Source
+       overrides the auto-detected product label. Rows with no device name are dropped. #>
+    param([string]$TrendCsv, [string]$Source)
     if (-not (Test-Path -LiteralPath $TrendCsv)) { throw "Trend CSV not found: $TrendCsv" }
     $rows = @(Import-Csv -LiteralPath $TrendCsv)
     if ($rows.Count -eq 0) { return @() }
     $cols = $rows[0].PSObject.Properties.Name
-    $candidates = @('Endpoint Name','Endpoint','Host Name','Hostname','Host','Computer Name','Computer',
-                    'Device Name','Device','Machine Name','Machine','Agent Host Name','Managed Server','Name')
-    $col = $null
-    foreach ($c in $candidates) {
-        $hit = $cols | Where-Object { $_.Trim().ToLowerInvariant() -eq $c.ToLowerInvariant() } | Select-Object -First 1
-        if ($hit) { $col = $hit; break }
+
+    $nameCol = Resolve-TrendColumn -Columns $cols -Fallback 'host|endpoint|computer|device|machine|name' -Candidates @(
+        'DeviceName','Endpoint Name','Endpoint','Host Name','Hostname','Host','Computer Name','Computer',
+        'Device Name','Device','Machine Name','Machine','Agent Host Name','Managed Server','Name')
+    if (-not $nameCol) { $nameCol = $cols[0] }
+
+    # Prefer a host/machine-level GUID (stable across agent reinstalls) over an agent-install GUID.
+    $idCol = Resolve-TrendColumn -Columns $cols -Fallback 'guid|uuid|\bid\b' -Candidates @(
+        'TrendId','Host GUID','GUID','Agent GUID','Endpoint GUID','Instance ID','UUID','Host ID','Agent ID','Machine GUID')
+
+    $src = if ($Source) { $Source }
+           else {
+               $srcCol = Resolve-TrendColumn -Columns $cols -Candidates @('TrendSource')
+               if ($srcCol) { $null } else { Get-TrendSourceFromColumns -Columns $cols }
+           }
+
+    Write-Ok ("Trend export: name column '{0}', id column '{1}'{2} ({3} rows)" -f `
+        $nameCol, ($idCol ?? '(none)'), $(if ($src) { ", source '$src'" } else { '' }), $rows.Count)
+
+    $out = New-Object System.Collections.ArrayList
+    foreach ($r in $rows) {
+        $name = if ($nameCol) { [string]$r.$nameCol } else { "" }
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $id = if ($idCol) { [string]$r.$idCol } else { "" }
+        $rowSrc = if ($src) { $src }
+                  elseif ($r.PSObject.Properties.Name -contains 'TrendSource') { [string]$r.TrendSource }
+                  else { 'Trend' }
+        [void]$out.Add([pscustomobject]@{
+            TrendId     = ($id).Trim()
+            DeviceName  = ($name).Trim()
+            TrendSource = ($rowSrc).Trim()
+        })
     }
-    if (-not $col) {
-        $col = $cols | Where-Object { $_.ToLowerInvariant() -match 'host|endpoint|computer|device|machine|name' } | Select-Object -First 1
+    return $out.ToArray()
+}
+
+function Get-TrendDeviceNames {
+    <# Backward-compatible helper: returns just the device/host names from a Trend export. #>
+    param([string]$TrendCsv)
+    return @(Get-TrendDeviceRecords -TrendCsv $TrendCsv | ForEach-Object { $_.DeviceName })
+}
+
+function Get-TrendDedupKey {
+    <# De-duplication key for a Trend record: the tool's unique id when present (that is the
+       requested "unique ID of the Trend tool"), else a normalised host|source fallback so exports
+       without a usable id still de-duplicate sensibly. #>
+    param($Record)
+    $id = if ($Record.PSObject.Properties.Name -contains 'TrendId') { [string]$Record.TrendId } else { "" }
+    if (-not [string]::IsNullOrWhiteSpace($id)) { return "id:" + $id.Trim().ToLowerInvariant().Trim('{','}') }
+    $host2 = Get-NormalizedDeviceName ([string]$Record.DeviceName)
+    $dom  = Get-NormalizedDomainSuffix ([string]$Record.DeviceName)
+    $src  = if ($Record.PSObject.Properties.Name -contains 'TrendSource') { ([string]$Record.TrendSource).ToLowerInvariant() } else { "" }
+    return "name:$host2|$dom|$src"
+}
+
+function Read-TrendStore {
+    <# Reads the local Trend inventory master store (git-ignored CSV of previously ingested devices).
+       Returns an empty array when the store does not exist. #>
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return @() }
+    $rows = @(Import-Csv -LiteralPath $Path)
+    $out = New-Object System.Collections.ArrayList
+    foreach ($r in $rows) {
+        if ([string]::IsNullOrWhiteSpace([string]$r.DeviceName)) { continue }
+        [void]$out.Add([pscustomobject]@{
+            TrendId     = [string]$r.TrendId
+            DeviceName  = [string]$r.DeviceName
+            TrendSource = [string]$r.TrendSource
+            FirstSeen   = if ($r.PSObject.Properties.Name -contains 'FirstSeen') { [string]$r.FirstSeen } else { "" }
+        })
     }
-    if (-not $col) { $col = $cols[0] }
-    Write-Ok "Trend export: using column '$col' as the device name ($($rows.Count) rows)"
-    return @($rows | ForEach-Object { $_.$col } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+    return $out.ToArray()
+}
+
+function Merge-TrendStore {
+    <# Merges freshly parsed Trend records into the existing master store.
+         -Mode Replace : the new export becomes the whole list (de-duplicated on the Trend id).
+         -Mode Append  : keep everything already ingested and add only records whose Trend id
+                         (or host|source fallback) is not already present.
+       Returns the merged, de-duplicated record set. #>
+    param([object[]]$Existing, [object[]]$New, [ValidateSet('Replace','Append')][string]$Mode = 'Replace')
+    $now = (Get-Date).ToString('yyyy-MM-dd')
+    $result = New-Object System.Collections.ArrayList
+    $seen = @{}
+    function _add($rec, $firstSeen) {
+        $k = Get-TrendDedupKey $rec
+        if ($seen.ContainsKey($k)) { return }
+        $seen[$k] = $true
+        [void]$result.Add([pscustomobject]@{
+            TrendId     = [string]$rec.TrendId
+            DeviceName  = [string]$rec.DeviceName
+            TrendSource = [string]$rec.TrendSource
+            FirstSeen   = if ($firstSeen) { $firstSeen } else { $now }
+        })
+    }
+    if ($Mode -eq 'Append') {
+        foreach ($e in $Existing) { _add $e ($(if ($e.PSObject.Properties.Name -contains 'FirstSeen' -and $e.FirstSeen) { $e.FirstSeen } else { $now })) }
+    }
+    foreach ($n in $New) { _add $n $now }
+    return $result.ToArray()
+}
+
+function Write-TrendStore {
+    <# Persists the master store to CSV (TrendId,DeviceName,TrendSource,FirstSeen). #>
+    param([string]$Path, [object[]]$Records)
+    if (-not $Path) { return }
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    if (-not $Records -or $Records.Count -eq 0) {
+        Set-Content -LiteralPath $Path -Value "TrendId,DeviceName,TrendSource,FirstSeen" -Encoding UTF8
+        return
+    }
+    $Records | Select-Object TrendId, DeviceName, TrendSource, FirstSeen |
+        Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
 }
 
 function Get-TrendDefenderMapping {
@@ -692,10 +828,17 @@ function Get-TrendDefenderMapping {
        Defender device; fuzzy tolerance is applied ONLY to the DNS domain suffix. So
        'host.contoso.com' still matches 'host.contoso.local' (same host, near domain), a short name
        'host' matches any 'host.<domain>', but two different hostnames never fuzzy-match each other.
-       Returns one PSCustomObject per de-duplicated Trend device (host + domain) with its best match. #>
-    param([string[]]$TrendNames, [object[]]$Inventory, [int]$MatchThreshold = 82)
+       De-duplication is keyed on the Trend tool's unique id (falling back to host|source when no id
+       is present). Accepts either -TrendRecords (objects with TrendId/DeviceName/TrendSource) or,
+       for backward compatibility, a flat -TrendNames string array. Returns one PSCustomObject per
+       de-duplicated Trend device with its best Defender match. #>
+    param([object[]]$TrendRecords, [string[]]$TrendNames, [object[]]$Inventory, [int]$MatchThreshold = 82)
     if ($MatchThreshold -lt 0)   { $MatchThreshold = 0 }
     if ($MatchThreshold -gt 100) { $MatchThreshold = 100 }
+    if (-not $TrendRecords -or $TrendRecords.Count -eq 0) {
+        $TrendRecords = @($TrendNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object { [pscustomobject]@{ TrendId = ""; DeviceName = [string]$_; TrendSource = "Trend" } })
+    }
     # Index Defender devices by normalised short hostname -> every device that shares that hostname
     # (there can be several across different domains; the domain suffix decides which one wins below).
     $byHost = @{}
@@ -707,11 +850,14 @@ function Get-TrendDefenderMapping {
     }
     $seen = @{}
     $out = New-Object System.Collections.ArrayList
-    foreach ($raw in $TrendNames) {
+    foreach ($rec in $TrendRecords) {
+        $raw      = [string]$rec.DeviceName
+        $trendId  = if ($rec.PSObject.Properties.Name -contains 'TrendId') { [string]$rec.TrendId } else { "" }
+        $trendSrc = if ($rec.PSObject.Properties.Name -contains 'TrendSource') { [string]$rec.TrendSource } else { "Trend" }
         $thost = Get-NormalizedDeviceName $raw
         $tdom  = Get-NormalizedDomainSuffix $raw
         if ($thost -eq "") { continue }
-        $dedup = "$thost|$tdom"
+        $dedup = Get-TrendDedupKey $rec
         if ($seen.ContainsKey($dedup)) { continue }
         $seen[$dedup] = $true
         $match = $null; $score = 0; $mtype = "Unmatched"
@@ -739,6 +885,8 @@ function Get-TrendDefenderMapping {
             $onboard = [string]$match.OnboardingStatus
             $status = if ($onboard -eq "Onboarded") { "Migrated to Defender" } else { "Matched - not onboarded" }
             [void]$out.Add([pscustomobject]@{
+                TrendId            = $trendId
+                TrendSource        = $trendSrc
                 TrendDeviceName    = $raw
                 DefenderDeviceName = [string]$match.DeviceName
                 DeviceId           = [string]$match.DeviceId
@@ -751,6 +899,8 @@ function Get-TrendDefenderMapping {
             })
         } else {
             [void]$out.Add([pscustomobject]@{
+                TrendId            = $trendId
+                TrendSource        = $trendSrc
                 TrendDeviceName    = $raw
                 DefenderDeviceName = ""
                 DeviceId           = ""
@@ -780,22 +930,34 @@ function New-TrendMigrationSeedOverride {
        embeds it in the TrendMigration table (__TRENDMIGRATION_SEED_B64__). Returns $null when the
        model has no TrendMigration placeholder. When -TrendCsv is not supplied, injects an empty
        seed so the table exists but has no rows. On any failure it injects an empty seed and warns,
-       so deployment still succeeds. #>
+       so deployment still succeeds.
+
+       -TrendMode Replace (default) uses the supplied export as the whole Trend list; -TrendMode
+       Append merges the export into the git-ignored master store (-InventoryStore), de-duplicating
+       on the Trend tool's unique id so only new devices are added. The full (merged) list is then
+       matched against the current Defender inventory. #>
     param([string]$ModelDir, [string]$TenantId, [string]$ClientId, [string]$ClientSecret,
-          [string]$TrendCsv, [int]$MatchThreshold = 82)
+          [string]$TrendCsv, [int]$MatchThreshold = 82,
+          [ValidateSet('Replace','Append')][string]$TrendMode = 'Replace',
+          [string]$InventoryStore, [string]$TrendSource)
     $path = Join-Path $ModelDir "definition\tables\TrendMigration.tmdl"
     if (-not (Test-Path -LiteralPath $path)) { return $null }
     $txt = Get-Content -LiteralPath $path -Raw
     if ($txt -notmatch '__TRENDMIGRATION_SEED_B64__') { return $null }
+    if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "trend-inventory.local.csv" }
     $seedJson = "[]"
-    if (-not $TrendCsv) {
+    if (-not $TrendCsv -and -not (($TrendMode -eq 'Append') -and (Test-Path -LiteralPath $InventoryStore))) {
         Write-Warn2 "No -TrendCsv supplied - TrendMigration will be empty. Pass -TrendCsv <trend-export.csv> to populate the migration mapping."
     } else {
         try {
-            $names = Get-TrendDeviceNames -TrendCsv $TrendCsv
-            if ($names.Count -eq 0) { throw "no device names found in the Trend CSV" }
+            $newRecs = if ($TrendCsv) { @(Get-TrendDeviceRecords -TrendCsv $TrendCsv -Source $TrendSource) } else { @() }
+            $existing = Read-TrendStore -Path $InventoryStore
+            $merged = Merge-TrendStore -Existing $existing -New $newRecs -Mode $TrendMode
+            if ($merged.Count -eq 0) { throw "no device names found in the Trend export or master store" }
+            Write-TrendStore -Path $InventoryStore -Records $merged
+            Write-Ok "Trend list ($TrendMode): $($merged.Count) unique devices in store ($InventoryStore)"
             $inv = Get-DefenderInventory -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
-            $map = Get-TrendDefenderMapping -TrendNames $names -Inventory $inv -MatchThreshold $MatchThreshold
+            $map = Get-TrendDefenderMapping -TrendRecords $merged -Inventory $inv -MatchThreshold $MatchThreshold
             $seedJson = ConvertTo-TrendMigrationSeed -Mapping $map
             $migr = @($map | Where-Object { $_.MigrationStatus -eq "Migrated to Defender" }).Count
             $pend = @($map | Where-Object { $_.MigrationStatus -eq "Matched - not onboarded" }).Count

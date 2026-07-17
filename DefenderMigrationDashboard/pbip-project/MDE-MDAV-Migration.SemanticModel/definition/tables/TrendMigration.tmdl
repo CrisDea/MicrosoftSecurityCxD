@@ -1,5 +1,13 @@
 table TrendMigration
 
+	column TrendId
+		dataType: string
+		sourceColumn: TrendId
+
+	column TrendSource
+		dataType: string
+		sourceColumn: TrendSource
+
 	column TrendDeviceName
 		dataType: string
 		sourceColumn: TrendDeviceName
@@ -76,7 +84,7 @@ table TrendMigration
 				    // ------------------------------------------------------------------
 				    SeedB64 = "__TRENDMIGRATION_SEED_B64__",
 				    Results = Json.Document(Binary.FromText(SeedB64, BinaryEncoding.Base64)),
-				    AsTable = Table.FromRecords(Results, {"TrendDeviceName", "DefenderDeviceName", "DeviceId", "MatchType", "MatchScore", "OnboardingStatus", "OSPlatform", "OSVersion", "MigrationStatus"}, MissingField.UseNull),
+				    AsTable = Table.FromRecords(Results, {"TrendId", "TrendSource", "TrendDeviceName", "DefenderDeviceName", "DeviceId", "MatchType", "MatchScore", "OnboardingStatus", "OSPlatform", "OSVersion", "MigrationStatus"}, MissingField.UseNull),
 				    Typed = Table.TransformColumnTypes(AsTable, {{"MatchScore", Int64.Type}})
 				in
 				    Typed

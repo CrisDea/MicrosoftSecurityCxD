@@ -89,6 +89,15 @@
     Migration Overview "Trend -> Defender" visuals). Omit it to leave the mapping empty. Can also be
     set as "trendCsv" in config.json.
 
+.PARAMETER TrendMode
+    Replace (default) uses the supplied export as the entire Trend list; Append merges it into the
+    git-ignored local master store (deploy\trend-inventory.local.csv), de-duplicating on the Trend
+    tool's unique id so only new devices are added. Can also be set as "trendMode" in config.json.
+
+.PARAMETER TrendSource
+    Optional override for the Trend product label (for example "Apex One" / "Deep Security"); omit
+    to auto-detect from the export header. Can also be set as "trendSource" in config.json.
+
 .PARAMETER MatchThreshold
     Similarity score (0-100) at or above which a differing DNS domain suffix is still accepted for a
     device whose short hostname already matches exactly. The hostname must always match exactly;
@@ -133,6 +142,9 @@ param(
     [string]$ClientId,
     [string]$ClientSecret,
     [string]$TrendCsv,
+    [ValidateSet('Replace','Append')][string]$TrendMode = 'Replace',
+    [string]$TrendInventoryStore,
+    [string]$TrendSource,
     [ValidateRange(0, 100)][int]$MatchThreshold = 82,
     [ValidateRange(0, 3650)][int]$RemovedAfterDays = 0
 )
@@ -218,7 +230,10 @@ try {
     $seedOverride = New-TrendSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret
     $avOverride = New-AvPostureSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -RemovedAfterDays $RemovedAfterDays
     if (-not $TrendCsv -and $cfg.ContainsKey('trendCsv')) { $TrendCsv = $cfg.trendCsv }
-    $trendMapOverride = New-TrendMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -TrendCsv $TrendCsv -MatchThreshold $MatchThreshold
+    if (-not $PSBoundParameters.ContainsKey('TrendMode') -and $cfg.ContainsKey('trendMode')) { $TrendMode = [string]$cfg.trendMode }
+    if (-not $TrendSource -and $cfg.ContainsKey('trendSource')) { $TrendSource = $cfg.trendSource }
+    if (-not $TrendInventoryStore -and $cfg.ContainsKey('trendInventoryStore')) { $TrendInventoryStore = $cfg.trendInventoryStore }
+    $trendMapOverride = New-TrendMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -TrendCsv $TrendCsv -MatchThreshold $MatchThreshold -TrendMode $TrendMode -InventoryStore $TrendInventoryStore -TrendSource $TrendSource
     $overrides = @{}
     if ($seedOverride)     { foreach ($k in $seedOverride.Keys)     { $overrides[$k] = $seedOverride[$k] } }
     if ($avOverride)       { foreach ($k in $avOverride.Keys)       { $overrides[$k] = $avOverride[$k] } }
