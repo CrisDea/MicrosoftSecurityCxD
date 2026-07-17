@@ -3,6 +3,31 @@
 All notable changes to the Defender Migration Dashboard are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses date-stamped semantic versions.
 
+## [3.8.0] — 2026-07-17
+
+### Added
+- **Trend id ingestion + de-duplication.** The ingest now captures each device's **unique Trend id**
+  (Apex One `GUID`; Deep Security `Host GUID`, preferred over `Agent GUID`) alongside the host name and
+  a **Trend source** label (auto-detected as *Apex One* / *Deep Security*, or set with `-Source`). New
+  `TrendId` and `TrendSource` columns are surfaced in the **TrendMigration** table. De-duplication is
+  keyed on the Trend id (falling back to a normalised `host|source` key when a row has no id).
+- **Replace vs Append import modes.** `Import-TrendInventory.ps1 -Mode` and `Deploy-Dashboard.ps1
+  -TrendMode` (`Replace` default / `Append`) control how each export updates a git-ignored local master
+  store (`deploy/trend-inventory.local.csv`): Replace uses the export as the whole list; Append adds
+  only new devices. New `_Common.ps1` helpers `Get-TrendDeviceRecords`, `Get-TrendDedupKey`,
+  `Read-/Merge-/Write-TrendStore`. Config keys `trendMode`, `trendSource`, `trendInventoryStore`.
+
+### Changed
+- **Trend template is now the normalised `TrendId,DeviceName,TrendSource`** (header-only, no rows).
+  Native Apex One and Deep Security exports are still auto-detected and ingested directly.
+- **README** *Trend CSV format*, *Replace vs Append*, and *How to ingest* sections rewritten to
+  document the id/name/source columns, the two native export layouts (and saving `.xls` as CSV first),
+  dedup-on-id, and the Replace/Append modes.
+
+### Security
+- **`deploy/trend-inventory.local.csv` and `*.local.csv` added to `.gitignore`** — the accumulated
+  master store holds customer device data and is never committed.
+
 ## [3.7.1] — 2026-07-17
 
 ### Added

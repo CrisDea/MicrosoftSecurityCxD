@@ -47,6 +47,24 @@
 .PARAMETER OutCsv
     Where to write the preview mapping CSV. Default: .\trend-migration-mapping.csv next to this script.
 
+.PARAMETER Mode
+    How the export is combined with the local master store (deploy\trend-inventory.local.csv, which
+    is git-ignored):
+      Replace (default) - the supplied export becomes the entire Trend list, de-duplicated on the
+                          Trend tool's unique id. Wipes whatever was ingested before.
+      Append            - keep everything already ingested and add only the export's new devices
+                          (de-duplicated on the Trend id, falling back to host|source when a row has
+                          no id). Lets you build one list from several partial exports over time.
+
+.PARAMETER InventoryStore
+    Path to the local master store CSV (TrendId,DeviceName,TrendSource,FirstSeen). Default:
+    .\trend-inventory.local.csv next to this script. Git-ignored - it holds customer device data and
+    must never be committed.
+
+.PARAMETER Source
+    Overrides the auto-detected Trend product label (for example "Apex One" or "Deep Security")
+    written to TrendSource. Omit to let the script infer it from the export's header signature.
+
 .PARAMETER MatchThreshold
     Similarity score (0-100) at or above which a differing DNS domain suffix is still accepted for a
     device whose short hostname already matches exactly. The hostname itself must always match
@@ -78,6 +96,9 @@ param(
     [string]$ClientSecret,
     [string]$ProjectPath,
     [string]$OutCsv,
+    [ValidateSet('Replace','Append')][string]$Mode = 'Replace',
+    [string]$InventoryStore,
+    [string]$Source,
     [ValidateRange(0, 100)][int]$MatchThreshold = 82,
     [switch]$Materialize,
     [switch]$RestorePlaceholder
@@ -122,23 +143,38 @@ if ($ConfigPath) {
     if (-not $ClientSecret -and $cfg.ContainsKey('graphClientSecret')) { $ClientSecret = $cfg.graphClientSecret }
     if (-not $ClientSecret -and $cfg.ContainsKey('clientSecret'))      { $ClientSecret = $cfg.clientSecret }
     if (-not $TrendCsv     -and $cfg.ContainsKey('trendCsv'))          { $TrendCsv     = $cfg.trendCsv }
+    if (-not $PSBoundParameters.ContainsKey('Mode') -and $cfg.ContainsKey('trendMode')) { $Mode = [string]$cfg.trendMode }
+    if (-not $Source       -and $cfg.ContainsKey('trendSource'))       { $Source       = $cfg.trendSource }
+    if (-not $InventoryStore -and $cfg.ContainsKey('trendInventoryStore')) { $InventoryStore = $cfg.trendInventoryStore }
 }
 
-if (-not $TrendCsv) {
+if (-not $TrendCsv -and -not ($Mode -eq 'Append')) {
     throw "No Trend CSV supplied. Pass -TrendCsv <trend-export.csv> (or set 'trendCsv' in config.json). Use -RestorePlaceholder to reset the table without a CSV."
 }
 
+# ---- resolve the local master store ----------------------------------------
+if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "trend-inventory.local.csv" }
+
 # ---- ingest -----------------------------------------------------------------
 Write-Step "Reading Trend export"
-$names = Get-TrendDeviceNames -TrendCsv $TrendCsv
-if ($names.Count -eq 0) { throw "No device names found in the Trend CSV ($TrendCsv)." }
+$newRecs = if ($TrendCsv) { @(Get-TrendDeviceRecords -TrendCsv $TrendCsv -Source $Source) } else { @() }
+if ($newRecs.Count -eq 0 -and $TrendCsv) { throw "No device names found in the Trend CSV ($TrendCsv)." }
+
+Write-Step "Merging into master store ($Mode)"
+$existing = Read-TrendStore -Path $InventoryStore
+$records  = Merge-TrendStore -Existing $existing -New $newRecs -Mode $Mode
+if ($records.Count -eq 0) { throw "The Trend list is empty. Supply -TrendCsv, or an existing store for -Mode Append." }
+Write-TrendStore -Path $InventoryStore -Records $records
+$added = $records.Count - @($existing).Count
+if ($Mode -eq 'Append') { Write-Ok "Master store: $($records.Count) unique devices ($([Math]::Max(0,$added)) new). Store: $InventoryStore" }
+else                    { Write-Ok "Master store replaced: $($records.Count) unique devices. Store: $InventoryStore" }
 
 Write-Step "Querying Defender inventory"
 $inv = Get-DefenderInventory -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
 Write-Ok "Defender inventory: $($inv.Count) current devices"
 
-Write-Step "Fuzzy-matching Trend -> Defender"
-$map = Get-TrendDefenderMapping -TrendNames $names -Inventory $inv -MatchThreshold $MatchThreshold
+Write-Step "Matching Trend -> Defender (hostname exact, domain fuzzy)"
+$map = Get-TrendDefenderMapping -TrendRecords $records -Inventory $inv -MatchThreshold $MatchThreshold
 
 $total = $map.Count
 $migr  = @($map | Where-Object { $_.MigrationStatus -eq "Migrated to Defender" }).Count
