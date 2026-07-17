@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "3bd7ed722465bfa577b7",
   "position": {
-    "x": 20,
-    "y": 196,
+    "x": 852,
+    "y": 162,
     "z": 4000,
     "height": 300,
-    "width": 480,
+    "width": 408,
     "tabOrder": 4000
   },
   "visual": {
@@ -168,11 +168,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSDistribution"
+                  "Property": "OSProduct"
                 }
               },
-              "queryRef": "DeviceHealth.OSDistribution",
-              "nativeQueryRef": "OSDistribution",
+              "queryRef": "DeviceHealth.OSProduct",
+              "nativeQueryRef": "OSProduct",
               "active": true
             }
           ]
@@ -211,7 +211,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Devices by OS version'"
+                  "Value": "'Devices by OS product'"
                 }
               }
             },

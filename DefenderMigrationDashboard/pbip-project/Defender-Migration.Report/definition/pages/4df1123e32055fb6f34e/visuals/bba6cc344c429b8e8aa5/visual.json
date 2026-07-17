@@ -6,7 +6,7 @@
     "y": 52,
     "z": 5900,
     "height": 40,
-    "width": 970,
+    "width": 1240,
     "tabOrder": 5900
   },
   "visual": {
@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Machines fully migrated to Defender and correctly configured | Trend Micro \u2192 Microsoft Defender",
+                    "value": "Machines fully migrated to Defender and correctly configured | Trend Micro → Microsoft Defender",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",

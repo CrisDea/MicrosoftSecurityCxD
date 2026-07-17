@@ -6,7 +6,7 @@
     "y": 348,
     "z": 4000,
     "height": 358,
-    "width": 980,
+    "width": 1240,
     "tabOrder": 4000
   },
   "visual": {
@@ -341,6 +341,20 @@
               },
               "queryRef": "DeviceHealth.DeviceStatus",
               "nativeQueryRef": "DeviceStatus"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "LastSeen"
+                }
+              },
+              "queryRef": "DeviceHealth.LastSeen",
+              "nativeQueryRef": "LastSeen"
             }
           ]
         }

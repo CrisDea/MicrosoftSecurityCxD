@@ -1,16 +1,16 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
-  "name": "471a34991f6bb1747446",
+  "name": "7f1a2b3c4d5e6f708192",
   "position": {
-    "x": 631,
-    "y": 396,
-    "z": 3800,
-    "height": 168,
-    "width": 629,
-    "tabOrder": 3800
+    "x": 436,
+    "y": 162,
+    "z": 3901,
+    "height": 300,
+    "width": 406,
+    "tabOrder": 3901
   },
   "visual": {
-    "visualType": "barChart",
+    "visualType": "columnChart",
     "drillFilterOtherVisuals": true,
     "visualContainerObjects": {
       "background": [
@@ -168,11 +168,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "CloudLocation"
+                  "Property": "DeviceType"
                 }
               },
-              "queryRef": "DeviceHealth.CloudLocation",
-              "nativeQueryRef": "CloudLocation",
+              "queryRef": "DeviceHealth.DeviceType",
+              "nativeQueryRef": "DeviceType",
               "active": true
             }
           ]
@@ -187,11 +187,39 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Fully Migrated & Configured"
+                  "Property": "OS On Latest Patch"
                 }
               },
-              "queryRef": "DeviceHealth.Fully Migrated & Configured",
-              "nativeQueryRef": "Fully Migrated & Configured"
+              "queryRef": "DeviceHealth.OS On Latest Patch",
+              "nativeQueryRef": "OS On Latest Patch"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS Patch 1-3 Months"
+                }
+              },
+              "queryRef": "DeviceHealth.OS Patch 1-3 Months",
+              "nativeQueryRef": "OS Patch 1-3 Months"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS Patch Over 3 Months"
+                }
+              },
+              "queryRef": "DeviceHealth.OS Patch Over 3 Months",
+              "nativeQueryRef": "OS Patch Over 3 Months"
             }
           ]
         }
@@ -211,7 +239,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Fully migrated & configured — by cloud / on-prem'"
+                  "Value": "'OS monthly patch currency (Windows w/ UBR)'"
                 }
               }
             },
@@ -256,6 +284,62 @@
                 }
               }
             }
+          }
+        }
+      ],
+      "dataPoint": [
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#107C10'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS On Latest Patch"
+          }
+        },
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#F7A500'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS Patch 1-3 Months"
+          }
+        },
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#D13438'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS Patch Over 3 Months"
           }
         }
       ]

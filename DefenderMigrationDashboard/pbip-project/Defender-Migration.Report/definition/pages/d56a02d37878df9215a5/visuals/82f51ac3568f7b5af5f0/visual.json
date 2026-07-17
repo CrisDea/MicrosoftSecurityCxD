@@ -6,7 +6,7 @@
     "y": 220,
     "z": 4000,
     "height": 300,
-    "width": 470,
+    "width": 592,
     "tabOrder": 4000
   },
   "visual": {
@@ -1129,7 +1129,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Management model \u2014 MDM / MAM / Unmanaged'"
+                  "Value": "'Management model — MDM / MAM / Unmanaged'"
                 }
               }
             },

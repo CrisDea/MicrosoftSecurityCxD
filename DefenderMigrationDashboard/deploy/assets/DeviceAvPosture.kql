@@ -31,6 +31,8 @@ let Av = DeviceTvmInfoGathering
                     tostring(A.AvMode)=='2','Passive (SxS)', tostring(A.AvMode)=='4','EDR Blocked',
                     tostring(A.AvMode)=='5','Passive Audit','Unknown'),
       AvPlatRing = tostring(A.AvPlatformRing),
+      AvEngRingRaw = tostring(A.AvEngineRing),
+      AvSigRingRaw = tostring(A.AvSignatureRing),
       AVProductVersion = tostring(A.AvPlatformVersion),
       AVEngineVersion  = tostring(A.AvEngineVersion),
       AVSigVersion     = tostring(A.AvSignatureVersion),
@@ -81,5 +83,9 @@ Base
          isnull(SigVKey) or isnull(SigGreenCut), "N/A",
          SigVKey >= SigGreenCut, "GOOD",
          isnotnull(SigRedCut) and SigVKey <= SigRedCut, "BAD", "WARN")
+| extend AVPlatformRing = case(AvPlatRing=='0','Default', AvPlatRing=='2','Beta', AvPlatRing=='3','Preview', AvPlatRing=='4','Staged', AvPlatRing=='5','Broad', AvPlatRing=='6','Delayed', 'Unknown'),
+         AVEngineRing    = case(AvEngRingRaw=='0','Default', AvEngRingRaw=='2','Beta', AvEngRingRaw=='3','Preview', AvEngRingRaw=='4','Staged', AvEngRingRaw=='5','Broad', AvEngRingRaw=='6','Delayed', 'Unknown'),
+         AVSignatureRing = case(AvSigRingRaw=='0','Default', AvSigRingRaw=='4','Staged', AvSigRingRaw=='5','Broad', 'Unknown')
 | project DeviceId, AVMode, AVProductVersion, AVEngineVersion, AVSigVersion, AVSigLastUpdateTime, EBPFStatus,
-          AVPlatformCompliant, AVEngineCompliant, AVSigCompliant
+          AVPlatformCompliant, AVEngineCompliant, AVSigCompliant,
+          AVPlatformRing, AVEngineRing, AVSignatureRing

@@ -6,7 +6,7 @@
     "y": 12,
     "z": 6000,
     "height": 40,
-    "width": 970,
+    "width": 1240,
     "tabOrder": 6000
   },
   "visual": {
@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Version Compliance \u2014 AV Signature / Engine / Platform / Sensor",
+                    "value": "Version Compliance — AV Signature / Engine / Platform / Sensor",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "18pt",
