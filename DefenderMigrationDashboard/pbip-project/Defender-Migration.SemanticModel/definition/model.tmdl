@@ -1,0 +1,13 @@
+model Model
+	culture: en-GB
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	discourageImplicitMeasures
+	sourceQueryCulture: en-GB
+
+	annotation PBI_QueryOrder = ["DeviceHealth","DeploymentTrend","Baselines","TrendMigration","EstateConfigState"]
+
+ref table DeviceHealth
+ref table DeploymentTrend
+ref table Baselines
+ref table TrendMigration
+ref table EstateConfigState

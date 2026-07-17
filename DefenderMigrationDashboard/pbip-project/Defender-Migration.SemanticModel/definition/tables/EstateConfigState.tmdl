@@ -1,0 +1,68 @@
+/// Estate configuration-state breakdown for the "Estate configuration state"
+/// donut. Unions the MDE-discovered estate (DeviceHealth) with Trend-only
+/// devices (in the ingested Trend list but never discovered by MDE) so the
+/// donut can distinguish, among not-onboarded devices: discovered-and-in-Trend
+/// (shown red) versus Trend-only (shown grey). DeviceHealth is left untouched
+/// so onboarding / health KPIs are not distorted by the injected Trend rows.
+table EstateConfigState
+
+	column ConfigStateLabel
+		dataType: string
+		summarizeBy: none
+		sourceColumn: [ConfigStateLabel]
+
+	column DeviceKey
+		dataType: string
+		summarizeBy: none
+		sourceColumn: [DeviceKey]
+
+	measure 'Config State Devices' = COUNTROWS(EstateConfigState) + 0
+		formatString: 0
+
+	/// Not-onboarded devices that MDE has discovered AND that appear in the
+	/// ingested Trend list (the RED donut slice / migration-ready backlog).
+	measure 'Not Onboarded In Trend' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Not onboarded - discovered & in Trend") + 0
+		formatString: 0
+
+	/// Devices present only in the ingested Trend list and never discovered by
+	/// MDE (the GREY donut slice) - blind spots MDE software inventory misses.
+	measure 'Trend Only Devices' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Trend only - not discovered") + 0
+		formatString: 0
+
+	partition EstateConfigState = calculated
+		mode: import
+		source =
+				VAR MatchedIds =
+				    CALCULATETABLE(
+				        DISTINCT(TrendMigration[DeviceId]),
+				        TrendMigration[DeviceId] <> ""
+				    )
+				VAR Mde =
+				    SELECTCOLUMNS(
+				        DeviceHealth,
+				        "ConfigStateLabel",
+				            SWITCH(
+				                TRUE(),
+				                DeviceHealth[OnboardingStatus] = "Onboarded"
+				                    && DeviceHealth[TrendInstalled] = "No"
+				                    && DeviceHealth[Healthy] = "Healthy",
+				                    "Fully migrated & configured",
+				                DeviceHealth[OnboardingStatus] = "Onboarded",
+				                    "Onboarded - needs attention",
+				                DeviceHealth[DeviceId] IN MatchedIds,
+				                    "Not onboarded - discovered & in Trend",
+				                "Not onboarded (backlog)"
+				            ),
+				        "DeviceKey", DeviceHealth[DeviceId]
+				    )
+				VAR TrendOnly =
+				    SELECTCOLUMNS(
+				        FILTER(
+				            TrendMigration,
+				            TrendMigration[MigrationStatus] = "Not found in Defender"
+				        ),
+				        "ConfigStateLabel", "Trend only - not discovered",
+				        "DeviceKey", TrendMigration[TrendId]
+				    )
+				RETURN
+				    UNION(Mde, TrendOnly)

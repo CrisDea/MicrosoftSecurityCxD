@@ -1,7 +1,36 @@
 # Changelog
 
 All notable changes to the Defender Migration Dashboard are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/), and the project uses date-stamped semantic versions.
+[Keep a Changelog](https://keepachangelog.com/). From 2026-07-17 the project uses **calendar
+versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number within that day (starting
+at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
+semantic versions and are kept as history.
+
+## [2026.07.17.01] — 2026-07-17
+
+### Added
+- **Calendar versioning (`YYYY.MM.DD.XX`).** Releases are now stamped with the build date plus a
+  same-day counter (`XX`, reset at midnight). The current version is shown on the **KPI Guide** page.
+- **`EstateConfigState` calculated table** powering the Overview "Estate configuration state" donut.
+  It unions MDE-discovered devices with **Trend-only** devices (on the ingested Trend list but never
+  seen by Defender) so the donut reflects the *whole* estate, not just what Defender can see. New
+  measures `Config State Devices`, `Not Onboarded In Trend` (red), `Trend Only Devices` (grey).
+
+### Changed
+- **Estate configuration-state donut recoloured.** Not-onboarded devices that are **discovered and on
+  the Trend list** now render **red** (`#D13438`); devices that exist **only on the Trend list** render
+  **grey** (`#8A8886`). Green = fully migrated & configured, amber = onboarded but needs attention.
+- **Slicers moved to the native Filters pane on every page.** The per-page slicer strip was removed;
+  all fields (device group, OS, onboarding state, version currency, etc.) are now `filterConfig`
+  filters on the right-hand Filters pane, matching the Configuration Drill-down page.
+- **`Trend Remaining` now includes Trend-only devices** (`+ [Trend Not In Defender]`) so the migration
+  backlog counts devices Defender cannot yet see, not just discovered-but-not-onboarded machines.
+- **KPI Guide refreshed** — documents the estate-donut red/grey semantics, the new
+  `Not Onboarded In Trend` / `Trend Only Devices` populations, a dedicated **Trend Migration** section,
+  and the move of slicers to the Filters pane.
+- **PBIP artifacts renamed `MDE-MDAV-Migration.*` → `Defender-Migration.*`** (report, semantic model,
+  `.pbip`, and their metadata references). Published Fabric names are unchanged (set by deploy-script
+  parameters), so existing deployments are unaffected.
 
 ## [3.8.0] — 2026-07-17
 
