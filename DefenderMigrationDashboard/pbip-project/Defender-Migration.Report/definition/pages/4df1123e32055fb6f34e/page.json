@@ -1,0 +1,286 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.4.0/schema.json",
+  "name": "4df1123e32055fb6f34e",
+  "displayName": "Overview",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280,
+  "objects": {
+    "background": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#EEF3FA'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "outspace": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#0B1E3D'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "slf00DeviceType4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceType"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Client / Server",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf01OSDistribution4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OSDistribution"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "OS version",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf02ManagedBy4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "ManagedBy"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Managed by / onboarding",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf03ADDomain4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "ADDomain"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "AD domain",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf04IsVDI4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "IsVDI"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Citrix VDI",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf05DeviceStatus4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceStatus"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Active / Stale",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf06DeviceTags4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceTags"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "MDE tags",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf07OSPlatform4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OSPlatform"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "OS platform",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf08Healthy4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "Healthy"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Healthy (all checks)",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf09TrendInstalled4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "TrendInstalled"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Trend installed",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf10CloudLocation4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "CloudLocation"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Cloud / on-prem",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf11OnboardingStatus4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OnboardingStatus"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Onboarding status",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf12SensorConnectivi4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "Sensor Connectivity State"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Sensor connectivity",
+        "howCreated": "User"
+      },
+      {
+        "name": "slf13LastSeen4df1",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "LastSeen"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Last seen",
+        "howCreated": "User"
+      }
+    ]
+  }
+}

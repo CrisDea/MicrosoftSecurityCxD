@@ -40,7 +40,7 @@ can keep using after the engagement:
 | Third-party AV / EDR footprint | Histograms of **machines by third-party antivirus product** and **machines by EDR solution** on the **Overview** page (product name on X, machine count on Y). |
 | Non-compliant devices — device-level triage table | **Non-Compliant Devices** page, plus **Device Details** drill-through for the full per-device record + Export data. |
 | Client vs Server split (client first) | `DeviceType` slicer on every page; client-vs-server splits on **Overview** and **Migration Overview**. |
-| OS-centric reporting — OS platform, version/build, breakdowns | **OS Posture** page; `OSPlatform` / `OSDistribution` slicers on every page. |
+| OS-centric reporting — OS platform, version/build, breakdowns | **OS Posture** page; `OSPlatform` / `OSDistribution` filters available in the **Filters pane** on every page. |
 | Filters/selectors — Client/Server, OS platform, device group/tags, onboarding status, active/stale | Searchable filter rail on every page, including **MDE tags**, Onboarding status, and Active/Stale. |
 
 ## What you get
@@ -193,7 +193,7 @@ The model is built to reflect the estate accurately, not to inflate counts:
   devices ratio is retained separately as `MDE Onboarding Coverage %`.
 
 ## Pages
-1. **Overview** — migration & configuration summary: fully-migrated KPIs, estate configuration state, client-vs-server and cloud/on-prem splits, healthy-by-OS, and the third-party AV / EDR histograms.
+1. **Overview** — migration & configuration summary: fully-migrated KPIs, estate configuration state, client-vs-server and cloud/on-prem splits, healthy-by-OS, and the third-party AV / EDR histograms. The **estate configuration-state donut** spans the whole estate: green = fully migrated & configured, amber = onboarded but needs attention, **red = not onboarded but discovered and on the ingested Trend list**, **grey = on the Trend list only (never discovered by Defender)**. It is driven by the `EstateConfigState` table, which unions MDE-discovered devices with Trend-only devices so blind spots are visible.
 2. **Configuration Drill-down** — per-check RAG posture (sensor, AV mode/signature/engine/platform, real-time, cloud, behaviour, tamper, network, PUA, OS), each drillable to device. The per-check pies use the full page width; slicing is via the native **Filters pane** (friendly-named filter cards), not an on-canvas rail.
 3. **Device Inventory** — the full onboarded-device results table on its own full-page layout (moved off the drill-down page).
 4. **Migration Overview** — active vs stale/removed trend by client/server (migration maturity).
@@ -205,11 +205,18 @@ The model is built to reflect the estate accurately, not to inflate counts:
 10. **Device Details** — a hidden drill-through page: right-click any chart element → *Drill through* to see the full per-device record, then **Export data**.
 11. **KPI Guide** — a plain-language reference page explaining what every headline metric means, organised by the report page it appears on (no technical knowledge required).
 
-Every visible page carries the same filters (searchable list slicers): Client/Server, OS platform,
+Every visible page carries the same filters: Client/Server, OS platform,
 OS version, Healthy, Managed by / onboarding, Trend installed, AD domain, Cloud/on-prem, Citrix VDI,
-Onboarding status, Active/Stale, Sensor connectivity, **MDE tags**, and Last seen. On the
-Configuration Drill-down and Trend Migration pages these are presented as cards in the native
-**Filters pane**.
+Onboarding status, Active/Stale, Sensor connectivity, **MDE tags**, and Last seen. These are now
+presented consistently as cards in the native **Filters pane** on the right of every page (open it
+with the filter icon); the previous on-canvas slicer rail has been removed.
+
+## Versioning
+
+The dashboard uses **calendar versioning**: `YYYY.MM.DD.XX`, where `XX` is the two-digit release
+number within that day — it starts at `01`, increments for each release the same day, and resets to
+`01` at midnight (for example `2026.07.17.01`). The current version is shown on the **KPI Guide** page
+and heads each entry in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Trend Micro migration mapping
 
