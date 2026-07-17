@@ -1,0 +1,85 @@
+// Per-device AV posture (mode, platform/engine/signature versions + fleet-relative currency).
+// DEPLOY-TIME advanced-hunting seed (advanced hunting cannot run during cloud scheduled refresh);
+// result is base64-seeded into the model and merged into DeviceHealth by DeviceId at refresh.
+// Kept lean: only DeviceTvmInfoGathering (AV telemetry) + a minimal DeviceInfo slice for OS build.
+let Look = 30d;
+let WinPlatMonthsRed = 2;   // Windows AV platform: red at >= 2 months behind newest (yellow = 1)
+let WinRedRank = 2;         // Windows non-month versions: red at n-2 releases behind
+let LinRedRank = 9;         // mac/linux mdatp: red at n-9 releases behind (~9 months monthly cadence)
+let VerKey = (v:string) {
+    tolong(coalesce(toint(tostring(split(v, ".")[0])), 0)) * 1000000000000000
+  + tolong(coalesce(toint(tostring(split(v, ".")[1])), 0)) * 10000000000
+  + tolong(coalesce(toint(tostring(split(v, ".")[2])), 0)) * 100000
+  + tolong(coalesce(toint(tostring(split(v, ".")[3])), 0)) };
+let PlatMonth = (v:string) {
+    iff(v startswith "4.18." and strlen(tostring(split(v, ".")[2])) >= 4,
+        tolong(substring(tostring(split(v, ".")[2]), 0, 2)) * 12
+      + tolong(substring(tostring(split(v, ".")[2]), 2, 2)),
+        long(null)) };
+let Dev = DeviceInfo
+  | where Timestamp > ago(Look) and isempty(MergedToDeviceId)
+  | summarize arg_max(Timestamp, OnboardingStatus, OSPlatform, OSVersionInfo) by DeviceId
+  | extend OSGroupKey = strcat(tostring(OSPlatform), "|", tostring(OSVersionInfo)),
+           IsLinux = tostring(OSPlatform) has "Linux",
+           Onboarded = OnboardingStatus == "Onboarded";
+let Av = DeviceTvmInfoGathering
+  | where Timestamp > ago(Look)
+  | summarize arg_max(Timestamp, *) by DeviceId
+  | extend A = parse_json(AdditionalFields)
+  | project DeviceId,
+      AVMode = case(tostring(A.AvMode)=='0','Active', tostring(A.AvMode)=='1','Passive',
+                    tostring(A.AvMode)=='2','Passive (SxS)', tostring(A.AvMode)=='4','EDR Blocked',
+                    tostring(A.AvMode)=='5','Passive Audit','Unknown'),
+      AvPlatRing = tostring(A.AvPlatformRing),
+      AVProductVersion = tostring(A.AvPlatformVersion),
+      AVEngineVersion  = tostring(A.AvEngineVersion),
+      AVSigVersion     = tostring(A.AvSignatureVersion),
+      AVSigLastUpdateTime = tostring(A.AvSignatureUpdateTime),
+      EBPFStatus = tostring(A.EBPFStatus);
+let Base = Dev | join kind=inner Av on DeviceId
+  | extend PlatVKey = iff(isempty(AVProductVersion), long(null), VerKey(AVProductVersion)),
+           PlatMonthKey = PlatMonth(AVProductVersion),
+           EngVKey = iff(isempty(AVEngineVersion), long(null), VerKey(AVEngineVersion)),
+           SigVKey = iff(isempty(AVSigVersion), long(null), VerKey(AVSigVersion)),
+           IsProd = AvPlatRing !in ('2','3');   // exclude Beta (2) / Current Channel Preview (3)
+let PlatBase = Base | where isnotnull(PlatVKey) and IsProd
+  | summarize s = array_sort_desc(make_set(PlatVKey)), RefMonth = max(PlatMonthKey), IsLin = any(IsLinux) by OSGroupKey
+  | extend PlatGreenCut = tolong(s[0]),
+           PlatRedCut = case(IsLin and array_length(s) > LinRedRank, tolong(s[LinRedRank]),
+                             not(IsLin) and array_length(s) > WinRedRank, tolong(s[WinRedRank]), long(null))
+  | project OSGroupKey, PlatGreenCut, PlatRedCut, PlatRefMonth = RefMonth;
+let EngBase = Base | where isnotnull(EngVKey) and IsProd
+  | summarize s = array_sort_desc(make_set(EngVKey)), IsLin = any(IsLinux) by OSGroupKey
+  | extend EngGreenCut = tolong(s[0]),
+           EngRedCut = case(IsLin and array_length(s) > LinRedRank, tolong(s[LinRedRank]),
+                            not(IsLin) and array_length(s) > WinRedRank, tolong(s[WinRedRank]), long(null))
+  | project OSGroupKey, EngGreenCut, EngRedCut;
+let SigBase = Base | where isnotnull(SigVKey) and IsProd
+  | summarize s = array_sort_desc(make_set(SigVKey)), IsLin = any(IsLinux) by OSGroupKey
+  | extend SigGreenCut = tolong(s[0]),
+           SigRedCut = case(IsLin and array_length(s) > LinRedRank, tolong(s[LinRedRank]),
+                            not(IsLin) and array_length(s) > WinRedRank, tolong(s[WinRedRank]), long(null))
+  | project OSGroupKey, SigGreenCut, SigRedCut;
+Base
+| join kind=leftouter PlatBase on OSGroupKey
+| join kind=leftouter EngBase on OSGroupKey
+| join kind=leftouter SigBase on OSGroupKey
+| extend AVPlatformCompliant = case(
+         not(Onboarded), "N/A",
+         isnull(PlatVKey) or isnull(PlatGreenCut), "N/A",
+         isnotnull(PlatMonthKey) and isnotnull(PlatRefMonth),
+             iff(PlatMonthKey >= PlatRefMonth, "GOOD", iff(PlatRefMonth - PlatMonthKey < WinPlatMonthsRed, "WARN", "BAD")),
+         PlatVKey >= PlatGreenCut, "GOOD",
+         isnotnull(PlatRedCut) and PlatVKey <= PlatRedCut, "BAD", "WARN"),
+     AVEngineCompliant = case(
+         not(Onboarded), "N/A",
+         isnull(EngVKey) or isnull(EngGreenCut), "N/A",
+         EngVKey >= EngGreenCut, "GOOD",
+         isnotnull(EngRedCut) and EngVKey <= EngRedCut, "BAD", "WARN"),
+     AVSigCompliant = case(
+         not(Onboarded), "N/A",
+         isnull(SigVKey) or isnull(SigGreenCut), "N/A",
+         SigVKey >= SigGreenCut, "GOOD",
+         isnotnull(SigRedCut) and SigVKey <= SigRedCut, "BAD", "WARN")
+| project DeviceId, AVMode, AVProductVersion, AVEngineVersion, AVSigVersion, AVSigLastUpdateTime, EBPFStatus,
+          AVPlatformCompliant, AVEngineCompliant, AVSigCompliant

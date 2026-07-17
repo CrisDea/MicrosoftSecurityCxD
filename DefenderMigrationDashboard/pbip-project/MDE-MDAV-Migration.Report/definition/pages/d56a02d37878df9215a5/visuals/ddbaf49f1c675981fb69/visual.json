@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "ddbaf49f1c675981fb69",
+  "position": {
+    "x": 20,
+    "y": 52,
+    "z": 5900,
+    "height": 40,
+    "width": 970,
+    "tabOrder": 5900
+  },
+  "visual": {
+    "visualType": "textbox",
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Management model (Intune MDM vs MAM app-protection vs unmanaged), enrollment profile, Defender app version posture and web protection. Windows-only AV/sensor checks are N/A on mobile.",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

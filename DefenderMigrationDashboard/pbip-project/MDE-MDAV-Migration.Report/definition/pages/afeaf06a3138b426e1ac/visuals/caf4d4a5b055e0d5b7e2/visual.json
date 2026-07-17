@@ -1,0 +1,652 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "caf4d4a5b055e0d5b7e2",
+  "position": {
+    "x": 20,
+    "y": 92,
+    "z": 4000,
+    "height": 612,
+    "width": 1240,
+    "tabOrder": 4000
+  },
+  "visual": {
+    "visualType": "tableEx",
+    "drillFilterOtherVisuals": true,
+    "visualContainerObjects": {
+      "background": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#FFFFFF'"
+                    }
+                  }
+                }
+              }
+            },
+            "transparency": {
+              "expr": {
+                "Literal": {
+                  "Value": "0D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "border": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#DCE6F2'"
+                    }
+                  }
+                }
+              }
+            },
+            "radius": {
+              "expr": {
+                "Literal": {
+                  "Value": "12D"
+                }
+              }
+            },
+            "width": {
+              "expr": {
+                "Literal": {
+                  "Value": "1D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "dropShadow": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "preset": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Custom'"
+                }
+              }
+            },
+            "position": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Outer'"
+                }
+              }
+            },
+            "color": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0B1E3D'"
+                    }
+                  }
+                }
+              }
+            },
+            "transparency": {
+              "expr": {
+                "Literal": {
+                  "Value": "65D"
+                }
+              }
+            },
+            "shadowSpread": {
+              "expr": {
+                "Literal": {
+                  "Value": "2D"
+                }
+              }
+            },
+            "shadowBlur": {
+              "expr": {
+                "Literal": {
+                  "Value": "14D"
+                }
+              }
+            },
+            "angle": {
+              "expr": {
+                "Literal": {
+                  "Value": "135D"
+                }
+              }
+            },
+            "shadowDistance": {
+              "expr": {
+                "Literal": {
+                  "Value": "3D"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "query": {
+      "queryState": {
+        "Values": {
+          "projections": [
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "DeviceName"
+                }
+              },
+              "queryRef": "DeviceHealth.DeviceName",
+              "nativeQueryRef": "DeviceName"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "DeviceId"
+                }
+              },
+              "queryRef": "DeviceHealth.DeviceId",
+              "nativeQueryRef": "DeviceId"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "DeviceType"
+                }
+              },
+              "queryRef": "DeviceHealth.DeviceType",
+              "nativeQueryRef": "DeviceType"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSPlatform"
+                }
+              },
+              "queryRef": "DeviceHealth.OSPlatform",
+              "nativeQueryRef": "OSPlatform"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSDistribution"
+                }
+              },
+              "queryRef": "DeviceHealth.OSDistribution",
+              "nativeQueryRef": "OSDistribution"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSBuildVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.OSBuildVersion",
+              "nativeQueryRef": "OSBuildVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSLatestVer"
+                }
+              },
+              "queryRef": "DeviceHealth.OSLatestVer",
+              "nativeQueryRef": "OSLatestVer"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSUpdated"
+                }
+              },
+              "queryRef": "DeviceHealth.OSUpdated",
+              "nativeQueryRef": "OSUpdated"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "DeviceTags"
+                }
+              },
+              "queryRef": "DeviceHealth.DeviceTags",
+              "nativeQueryRef": "DeviceTags"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "MachineGroup"
+                }
+              },
+              "queryRef": "DeviceHealth.MachineGroup",
+              "nativeQueryRef": "MachineGroup"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "ManagedBy"
+                }
+              },
+              "queryRef": "DeviceHealth.ManagedBy",
+              "nativeQueryRef": "ManagedBy"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OnboardingStatus"
+                }
+              },
+              "queryRef": "DeviceHealth.OnboardingStatus",
+              "nativeQueryRef": "OnboardingStatus"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "Healthy"
+                }
+              },
+              "queryRef": "DeviceHealth.Healthy",
+              "nativeQueryRef": "Healthy"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "DeviceStatus"
+                }
+              },
+              "queryRef": "DeviceHealth.DeviceStatus",
+              "nativeQueryRef": "DeviceStatus"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "LastSeen"
+                }
+              },
+              "queryRef": "DeviceHealth.LastSeen",
+              "nativeQueryRef": "LastSeen"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "SensorCompliant"
+                }
+              },
+              "queryRef": "DeviceHealth.SensorCompliant",
+              "nativeQueryRef": "SensorCompliant"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRVersion",
+              "nativeQueryRef": "EDRVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "SensorHealthState"
+                }
+              },
+              "queryRef": "DeviceHealth.SensorHealthState",
+              "nativeQueryRef": "SensorHealthState"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVMode"
+                }
+              },
+              "queryRef": "DeviceHealth.AVMode",
+              "nativeQueryRef": "AVMode"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVSigCompliant"
+                }
+              },
+              "queryRef": "DeviceHealth.AVSigCompliant",
+              "nativeQueryRef": "AVSigCompliant"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVProductVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.AVProductVersion",
+              "nativeQueryRef": "AVProductVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVEngineCompliant"
+                }
+              },
+              "queryRef": "DeviceHealth.AVEngineCompliant",
+              "nativeQueryRef": "AVEngineCompliant"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVPlatformCompliant"
+                }
+              },
+              "queryRef": "DeviceHealth.AVPlatformCompliant",
+              "nativeQueryRef": "AVPlatformCompliant"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "RealtimeProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.RealtimeProtection",
+              "nativeQueryRef": "RealtimeProtection"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "CloudProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.CloudProtection",
+              "nativeQueryRef": "CloudProtection"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "BehaviorMonitoring"
+                }
+              },
+              "queryRef": "DeviceHealth.BehaviorMonitoring",
+              "nativeQueryRef": "BehaviorMonitoring"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "TamperProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.TamperProtection",
+              "nativeQueryRef": "TamperProtection"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "NetworkProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.NetworkProtection",
+              "nativeQueryRef": "NetworkProtection"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "PUAProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.PUAProtection",
+              "nativeQueryRef": "PUAProtection"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "TrendInstalled"
+                }
+              },
+              "queryRef": "DeviceHealth.TrendInstalled",
+              "nativeQueryRef": "TrendInstalled"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "TrendProduct"
+                }
+              },
+              "queryRef": "DeviceHealth.TrendProduct",
+              "nativeQueryRef": "TrendProduct"
+            }
+          ]
+        }
+      }
+    },
+    "objects": {
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "text": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Full device record (right-click \u2192 Export data for all columns)'"
+                }
+              }
+            },
+            "fontSize": {
+              "expr": {
+                "Literal": {
+                  "Value": "12D"
+                }
+              }
+            },
+            "bold": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "titleWrap": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "heading": {
+              "expr": {
+                "Literal": {
+                  "Value": "'H3'"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

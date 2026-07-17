@@ -1,0 +1,380 @@
+# Defender Migration Dashboard
+
+A self-contained Power BI dashboard for running and reporting on a **Microsoft Defender for
+Endpoint (MDE) + Defender Antivirus (MDAV) migration** — for example, moving off a third-party
+EDR/AV such as Trend Micro. It tracks deployment progression, version compliance
+(AV signature / AV engine / Defender platform / MDE sensor), a client-vs-server split, OS posture,
+the third-party AV and EDR products still present across the estate, and a device-level triage list
+of non-compliant machines.
+
+The dashboard reads **live from your own Microsoft Defender for Endpoint tenant** through the
+Defender export-assessment REST APIs (`api.securitycenter.microsoft.com`) — no data lake, no
+Sentinel, and no Log Analytics required, and no 10,000-row hunting cap, so it scales to 100k+ device
+estates. A one-command deployment publishes the semantic model and report to a Power BI / Microsoft
+Fabric workspace, binds the data source to your Entra app registration (a **Service Principal**),
+generates the 30-day trend history, and enables a scheduled refresh so the report keeps itself up to
+date with no local scheduler.
+
+---
+
+## Why this exists
+
+Migrations off a third-party EDR/AV need an operational, repeatable view of progress that a customer
+can keep using after the engagement:
+
+- **Migration maturity** — active vs stale/removed devices over time, not a point-in-time snapshot.
+- **Version compliance** — clear visibility of devices behind on AV signature, AV engine, Defender
+  platform, or MDE sensor versions, with simple KPIs.
+- **Third-party footprint** — how many machines still run each third-party antivirus and EDR product,
+  so you can target what remains.
+- **Operational triage** — a device-level table of non-compliant machines for follow-up.
+- **OS-centric reporting** — posture broken down by OS platform, version and build.
+- **Client vs Server** — first-class separation, with client-first emphasis.
+
+## Requirements coverage
+
+| Requirement | Where it is delivered |
+|-------------|------------------------|
+| Deployment progression — active vs stale/removed **trend** (not a point-in-time snapshot) | **Migration Overview** page (active vs stale by client/server) and a 30-day day-by-day **DeploymentTrend** by machine group, materialised at deploy time from Defender advanced hunting. "Stale" is the `StaleAfterDays` parameter. |
+| Version compliance — AV signature, AV engine, Defender platform, MDE sensor | **Version Compliance** page (KPIs + "devices not on latest" by component) and per-check pies on **Configuration Drill-down**. Targets set in the `LatestBaselines` table. |
+| Third-party AV / EDR footprint | Histograms of **machines by third-party antivirus product** and **machines by EDR solution** on the **Overview** page (product name on X, machine count on Y). |
+| Non-compliant devices — device-level triage table | **Non-Compliant Devices** page, plus **Device Details** drill-through for the full per-device record + Export data. |
+| Client vs Server split (client first) | `DeviceType` slicer on every page; client-vs-server splits on **Overview** and **Migration Overview**. |
+| OS-centric reporting — OS platform, version/build, breakdowns | **OS Posture** page; `OSPlatform` / `OSDistribution` slicers on every page. |
+| Filters/selectors — Client/Server, OS platform, device group/tags, onboarding status, active/stale | Searchable filter rail on every page, including **MDE tags**, Onboarding status, and Active/Stale. |
+
+## What you get
+
+| Path | What |
+|------|------|
+| `pbip-project/` | The full **PBIP project** (TMDL semantic model + PBIR report). Opens in Power BI Desktop, commits to Git, and publishes via the deploy script. DeviceHealth queries the Defender export APIs live; the trend history is embedded at deploy time; no customer data is baked into the committed files. |
+| `deploy/Deploy-Dashboard.ps1` | **One-button deployment** — publishes the semantic model + report, binds the data source to your Entra app (Service Principal), generates the trend history, enables scheduled refresh, and runs a first refresh. |
+| `deploy/Import-TrendInventory.ps1` | Standalone **Trend Micro CSV ingest** — matches a Trend device export to the current Defender inventory (exact hostname, domain-only fuzzy) and previews the mapping; `-Materialize` embeds it into the **TrendMigration** table for the next deploy. |
+| `deploy/Export-Report.ps1` | Headless export of the published report to PDF / PPTX. |
+| `deploy/Bootstrap-Deployment.ps1` | Creates **or reuses** an Entra app registration for deployment and the live data path, and grants the required WindowsDefenderATP permissions (`Machine.Read.All`, `Software.Read.All`, `Vulnerability.Read.All`, `AdvancedQuery.Read.All`). |
+| `deploy/assets/DeploymentTrend.kql` | The 30-day advanced-hunting query the deploy script runs to build the trend history seed. |
+| `deploy/config.json.template` | Template for the app credentials and workspace settings (copy to `config.json`, which is git-ignored). |
+| `templates/defender-kql-pack.kql` | KQL for inventory, AV health, sensor version, active-vs-stale trend, and compliance. |
+| `templates/power-query-source.m` | Reference Power Query M for the Defender export-API app-only source. |
+| `templates/dax-measures.dax` | The DAX measures (population, active/stale, compliance %). |
+
+## Prerequisites
+
+- **PowerShell 7.x** (or Windows PowerShell 5.1) — no third-party modules.
+- **Azure CLI** (`az`) for interactive sign-in to publish to Fabric, or an Entra app registration for
+  service-principal deployment.
+- An **Entra app registration** with the four **WindowsDefenderATP** application permissions
+  (`Machine.Read.All`, `Software.Read.All`, `Vulnerability.Read.All`, `AdvancedQuery.Read.All`,
+  admin-consented). Its `tenantId` / `clientId` / `clientSecret` are bound to the dataset as a
+  Service Principal and used to generate the trend history. `Bootstrap-Deployment.ps1` can create or
+  reuse one for you.
+- A **Power BI / Fabric workspace** on a capacity that supports semantic models
+  (Fabric, Premium, or Premium-Per-User). The script can create the workspace for you if you pass a
+  capacity id.
+- Rights to publish to that workspace (Workspace Admin or Member).
+
+## Quick start (3 commands)
+
+```powershell
+# 1. Create/reuse the Entra app and grant the WindowsDefenderATP permissions (writes deploy/config.json)
+pwsh ./deploy/Bootstrap-Deployment.ps1 -Mode CreateNew -DisplayName "defender-migration-dashboard"
+
+# 2. Sign in to publish to Fabric, then deploy (credentials come from config.json)
+az login
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -SelectWorkspace -Wait
+
+# 3. Open the report at the URL the script prints when it finishes
+```
+
+That publishes the semantic model and report, binds the report to the model, binds the data source to
+your app as a Service Principal, generates the 30-day trend history, enables a scheduled refresh, and
+runs a first refresh so the report shows your real Defender data.
+
+### Other ways to target a workspace
+
+```powershell
+# Deploy into a specific existing workspace by id
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -WorkspaceId <workspace-guid>
+
+# Create a new workspace on a given capacity
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -WorkspaceName "Defender Migration" -CapacityId <capacity-guid>
+
+# Fully non-interactive (CI / service principal) — the same app publishes and queries
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -WorkspaceId <workspace-guid>
+```
+
+## Parameters (Deploy-Dashboard.ps1)
+
+| Parameter | Purpose |
+|-----------|---------|
+| `-SelectWorkspace` | Enumerate accessible workspaces and choose one interactively (includes a "create new" option). |
+| `-WorkspaceId` | Deploy into a specific workspace by GUID. |
+| `-WorkspaceName` | Find (or, with `-CapacityId`, create) a workspace by name. |
+| `-CapacityId` | Capacity to create the workspace on when it does not yet exist. |
+| `-ModelName` / `-ReportName` | Display names for the published items. |
+| `-ConfigPath` | Path to a `config.json` holding the app credentials + workspace (see Bootstrap). |
+| `-ClientId` / `-ClientSecret` / `-TenantId` | App credentials passed directly instead of a config file. |
+| `-SkipRefresh` | Publish without triggering a dataset refresh. |
+| `-SkipSchedule` | Publish without enabling the scheduled refresh. |
+| `-TrendCsv` | Path to a Trend Micro device export (CSV). At deploy time each Trend device is matched to the current Defender inventory and the result is embedded in the **TrendMigration** table (see *Trend Micro migration mapping*). Omit to leave the table empty. |
+| `-MatchThreshold` | Domain-suffix fuzzy-match acceptance score (0–100). The short hostname must always match exactly; this governs only how much the DNS domain may differ. Default `82`. Lower to accept looser domains; raise to require closer domains. |
+| `-RemovedAfterDays` | Noise filter. When > 0, devices whose Defender "last seen" is older than this many days are excluded from the model (treated as decommissioned). Default `0` = keep all. Also settable as `removedAfterDays` in config.json. |
+| `-RefreshTimes` | Times of day (`HH:mm`) for the scheduled refresh. Default: 2×/day (06:00, 18:00) — TVM snapshot tables refresh ~daily. |
+| `-RefreshTimeZone` | Time-zone id for the schedule (e.g. `UTC`, `GMT Standard Time`). Default `UTC`. |
+
+The app credentials are used to bind the Defender data source (as a Service Principal) and to
+generate the trend history at deploy time; when you pass them via `-ClientId`/`-ClientSecret` or a
+`config.json`, the same app can also publish to Fabric. If you prefer to publish as yourself, run
+`az login` and supply only the app credentials — the script signs in interactively for Fabric and
+still binds the data source. If you want a **separate** app for the Defender query, set
+`graphTenantId` / `graphClientId` / `graphClientSecret` in `config.json`.
+
+## How the live data path works
+
+1. **DeviceHealth (current state)** — the semantic model's DeviceHealth query calls the Microsoft
+   Defender for Endpoint export/list machine APIs on `api.securitycenter.microsoft.com` with a plain
+   GET (no in-query token, no second data source). The deploy script binds that data source to your
+   Entra app as a **Service Principal**, so Power BI mints and attaches the app-only bearer token
+   itself on every scheduled refresh. Keeping it a single-source query is what sidesteps the Power
+   Query data-combination firewall that blocks the older "mint a token, then call the API" pattern on
+   cloud refresh. The paged export APIs have no 10,000-row hunting cap, so this scales to 100k+
+   devices.
+2. **DeploymentTrend (30-day history)** — the advanced-hunting endpoint is POST-only and cannot run
+   during a cloud scheduled refresh (a `Web.Contents` POST body is rejected on any non-Anonymous
+   data source). So the 30-day day-by-day history is **materialised at deploy time**: the deploy
+   script runs `deploy/assets/DeploymentTrend.kql` against the Defender advanced-hunting API,
+   base64-encodes the aggregated result, and embeds it in the model. It is regenerated on every
+   redeploy — so the trend advances each time you redeploy, while DeviceHealth stays live on the
+   normal refresh cadence.
+3. No secret is ever written to the committed project files. The DeviceHealth query carries no
+   credentials, and the trend table carries only a base64 placeholder that the deploy script fills.
+
+## Third-party AV / EDR classification
+
+The two histograms count machines by the third-party product detected in `DeviceTvmSoftwareInventory`.
+Product matching uses a **hardcoded catalogue** of enterprise antivirus and EDR/XDR vendors (Trend
+Micro, Sophos, McAfee/Trellix, Symantec, Kaspersky, ESET, Bitdefender, and more for AV; CrowdStrike
+Falcon, SentinelOne, Carbon Black, Cortex XDR, Cybereason, Tanium, and more for EDR), so the graphs are
+generic across estates. Machines with none detected fall into a **None** bucket so the bars total the
+full estate.
+
+## Setting "latest version" baselines
+Compliance measures compare each device against a **LatestBaselines** control table
+(signature / engine / platform / sensor). Edit those values (in the model, or via the `Latest*`
+parameters) to your current target versions — no query changes needed.
+
+The "stale" threshold is a parameter (`StaleAfterDays`, default 7). Agree the value with the customer.
+
+## Data hygiene and noise filters
+
+The model is built to reflect the estate accurately, not to inflate counts:
+
+- **Merged and excluded devices are dropped** (`mergedIntoMachineId` / `isExcluded`), so duplicates and
+  suppressed machines never reach the report.
+- **Onboarding backlog is honest.** `onboardingStatus` is split into *Onboarded*, *Can be onboarded*,
+  *Unsupported*, and *Insufficient info*. Only genuinely onboardable devices count toward the
+  Migration Backlog — devices Defender reports as *Unsupported* / *Insufficient info* are shown
+  separately and no longer inflate the remaining-to-migrate figure.
+- **Active vs Stale is onboarded-only.** The `Active Devices` / `Stale Devices` measures count only
+  onboarded devices (recency by `lastSeen`), matching the population of the deployment-trend chart, so
+  the two never disagree. Not-yet-onboarded discovered devices are excluded from this signal.
+- **Optional removed-device cutoff.** `-RemovedAfterDays <n>` (default `0` = keep all) drops devices not
+  seen in the last *n* days, removing long-decommissioned records that would otherwise drag the
+  migration denominator. Set it to e.g. `180` for a noisy estate.
+- **AV posture ignores pre-release rings.** The deploy-time AV currency baseline excludes Beta and
+  Current-Channel-Preview rings, so a preview build never sets the fleet "latest" bar.
+- **KPI cards show `0`, not blank**, when a count is genuinely zero, so an empty card is never mistaken
+  for a data-load failure.
+- **`Migration %` measures Trend-list coverage.** The headline `Migration %` is *healthy, onboarded MDE
+  devices ÷ the ingested Trend asset list* (`Trend Source Devices`) — i.e. how much of the Trend estate
+  is now protected by a healthy Defender sensor. It requires a Trend list (`-TrendCsv`); with no Trend
+  list ingested the card shows **N/A** rather than a misleading 0%. The older onboarded-÷-all-Defender-
+  devices ratio is retained separately as `MDE Onboarding Coverage %`.
+
+## Pages
+1. **Overview** — migration & configuration summary: fully-migrated KPIs, estate configuration state, client-vs-server and cloud/on-prem splits, healthy-by-OS, and the third-party AV / EDR histograms.
+2. **Configuration Drill-down** — per-check RAG posture (sensor, AV mode/signature/engine/platform, real-time, cloud, behaviour, tamper, network, PUA, OS), each drillable to device. The per-check pies use the full page width; slicing is via the native **Filters pane** (friendly-named filter cards), not an on-canvas rail.
+3. **Device Inventory** — the full onboarded-device results table on its own full-page layout (moved off the drill-down page).
+4. **Migration Overview** — active vs stale/removed trend by client/server (migration maturity).
+5. **Trend Migration** — maps each device in your **Trend Micro export** to the current Defender inventory: Trend Source Devices, Trend Migrated, Trend Migration % and Trend Not In Defender KPI cards, a migration-status donut, and the full per-device mapping table (Trend name → Defender name, match type, score, onboarding status). Populated with `-TrendCsv` at deploy time — see *Trend Micro migration mapping*.
+6. **Version Compliance** — KPIs and "devices not on latest" by component and OS.
+7. **Non-Compliant Devices** — device-level triage table.
+8. **OS Posture** — devices by OS platform / version / build; compliance by OS.
+9. **Mobile (MDE)** — mobile-device management state.
+10. **Device Details** — a hidden drill-through page: right-click any chart element → *Drill through* to see the full per-device record, then **Export data**.
+11. **KPI Guide** — a plain-language reference page explaining what every headline metric means, organised by the report page it appears on (no technical knowledge required).
+
+Every visible page carries the same filters (searchable list slicers): Client/Server, OS platform,
+OS version, Healthy, Managed by / onboarding, Trend installed, AD domain, Cloud/on-prem, Citrix VDI,
+Onboarding status, Active/Stale, Sensor connectivity, **MDE tags**, and Last seen. On the
+Configuration Drill-down and Trend Migration pages these are presented as cards in the native
+**Filters pane**.
+
+## Trend Micro migration mapping
+
+The **Trend Migration** page answers "which of the devices in my Trend Micro estate are now in
+Defender, and which still need migrating?" — using your Trend export as the source of truth.
+
+- **Source of truth** — a CSV exported from Trend Micro (any column that holds the device/host name
+  is auto-detected). Pass it with `-TrendCsv <path>` on `Deploy-Dashboard.ps1`, or preview/ingest it
+  with the standalone `deploy/Import-TrendInventory.ps1`.
+- **Matched against the same inventory as the dashboard** — the current Defender device list is read
+  from the paged `GET /api/machines` export endpoint (the same source as DeviceHealth), so the
+  mapping never disagrees with the rest of the report. Only `Machine.Read.All` is required.
+- **Exact hostname, domain-tolerant matching** — the **short hostname must match exactly** (after
+  normalising case, a trailing `$`, and punctuation), so two different machines are never conflated.
+  Fuzzy tolerance is applied **only to the DNS domain suffix**: a device whose hostname matches is
+  still accepted when its domain differs but scores at or above `-MatchThreshold` (default 82) — e.g.
+  `ws01.contoso.com` vs `ws01.contoso.local` — and classified as a **Fuzzy** match. A hostname with
+  no domain (short name, or the AD `$` form) matches any domain for that host, preferring an onboarded
+  record on ties. Each row is classified **Migrated to Defender** (matched + onboarded),
+  **Matched — not onboarded**, or **Not found in Defender**. A same-host / very different-domain pair
+  (e.g. `ws09.contoso.com` vs `ws09.fabrikam.com`) is **rejected**.
+- **Why it is a deploy-time ingest, not an in-report file upload** — the model refreshes in the
+  Power BI service as a Service Principal with no on-premises data gateway, so a locally uploaded file
+  cannot be re-read on a cloud refresh. The mapping is therefore computed at deploy time and embedded
+  in the **TrendMigration** table (the same deploy-time seed pattern as the trend history). Re-run the
+  deploy (or `Import-TrendInventory.ps1 -Materialize`) whenever the Trend export changes.
+
+### Trend CSV format
+
+The ingest is deliberately forgiving about layout — you can hand it a raw Trend Micro export:
+
+- **One row per device.** Extra columns are ignored.
+- **A host-name column is required.** The header is auto-detected from common Trend/EDR export names,
+  including `Endpoint Name`, `Host Name`, `Hostname`, `Computer Name`, `Device Name`, `Machine Name`,
+  `Endpoint`, `Client Computer Name`, `FQDN`, and `Name`. If none is found the script errors and lists
+  the headers it saw — rename your column to one of the above (or the first column is used as a last
+  resort).
+- **FQDN or short hostname both accepted.** `WS01`, `WS01.contoso.com`, and the AD form `WS01$` all
+  resolve to the same host. Only the part **before the first dot** is treated as the hostname; the
+  rest is the domain suffix used for the domain-only fuzzy step.
+- **Encoding/quoting** — a standard comma-separated, UTF-8 CSV with a header row. Values may be quoted.
+
+Example (`trend-export.csv`):
+
+```csv
+Endpoint Name,Domain,Last Scan,Agent Version
+WS01.contoso.com,CONTOSO,2026-07-15,14.0
+WS02.contoso.local,CONTOSO,2026-07-14,14.0
+FILESERVER01,CONTOSO,2026-07-15,14.0
+```
+
+A blank, header-only starter is provided at
+[`templates/trend-inventory-template.csv`](templates/trend-inventory-template.csv) — copy it, add one
+row per Trend device, and pass the file with `-TrendCsv`. It ships with **no rows** (structure only);
+the repository never contains real or sample device data.
+
+### How to ingest the Trend asset list
+
+You need: a Trend Micro device export as CSV (see *Trend CSV format* above — or start from
+[`templates/trend-inventory-template.csv`](templates/trend-inventory-template.csv)) and a working
+`config.json` (Service Principal with `Machine.Read.All`). Then choose one of the two flows below.
+
+**Option A — preview first, then deploy (recommended).**
+
+```powershell
+# 1. Preview the mapping without touching the model.
+#    Prints a table and writes trend-migration-mapping.csv for review.
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json
+
+# 2. (Optional) tune domain tolerance, then re-preview.
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json -MatchThreshold 90
+
+# 3. Embed the reviewed mapping into the TrendMigration table.
+pwsh ./deploy/Import-TrendInventory.ps1 -TrendCsv .\trend-export.csv -ConfigPath .\deploy\config.json -Materialize
+
+# 4. Deploy.
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath .\deploy\config.json -Wait
+```
+
+**Option B — one shot (ingest + deploy in a single command).**
+
+```powershell
+pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath .\deploy\config.json -TrendCsv .\trend-export.csv -Wait
+```
+
+Re-run whenever the Trend export changes. To clear the mapping, run
+`Import-TrendInventory.ps1 -RestorePlaceholder` (no CSV needed) and redeploy. You can also set
+`"trendCsv"` in `config.json` so the export is picked up automatically on every deploy.
+
+## Output & sharing
+
+```powershell
+# Headless export of the published report (ids are printed by Deploy-Dashboard.ps1)
+pwsh ./deploy/Export-Report.ps1 -WorkspaceId <ws-guid> -ReportId <report-guid> -Format PDF
+pwsh ./deploy/Export-Report.ps1 -WorkspaceId <ws-guid> -ReportId <report-guid> -Format PPTX
+pwsh ./deploy/Export-Report.ps1 -WorkspaceId <ws-guid> -ReportId <report-guid> -Format PDF -Pages "Non-Compliant Devices"
+```
+
+You can also export from the service (Export → PowerPoint / PDF), export a visual's data
+(… → Export data), or connect Excel live to the semantic model (Analyze in Excel). Image/CSV export
+of unbounded tables requires a paginated (.rdl) report over the same model.
+
+## Security & secrets
+- **No customer data or credentials are committed.** DeviceHealth carries no credentials (the data
+  source is bound to your app as a Service Principal after publish); the trend table carries only a
+  base64 placeholder that the deploy script fills at deploy time.
+- `config.json` (real credentials) is **git-ignored** — never commit it.
+- Client secrets are written by the bootstrap script to a local path only. Do not save them to
+  OneDrive, SharePoint, or any cloud-synced location.
+- On a machine with OneDrive + Microsoft Information Protection, save `.pbix`/`.pbit` to a non-synced
+  path first (e.g. `C:\temp`) to avoid auto-encryption corrupting the file, then copy it into your clone.
+
+## Permission reference
+
+| Purpose | Permission | Type |
+|---------|-----------|------|
+| Publish semantic model + report | Workspace Admin or Member on the target workspace | Power BI role |
+| Service-principal deployment | "Service principals can use Fabric APIs" tenant setting + workspace role | Tenant setting |
+| Live data (Defender export APIs + trend seed) | WindowsDefenderATP `Machine.Read.All`, `Software.Read.All`, `Vulnerability.Read.All`, `AdvancedQuery.Read.All` | Application |
+
+Full details, who grants each permission, and how to verify: see **[PERMISSIONS.md](PERMISSIONS.md)**.
+Step-by-step install with a decision tree and troubleshooting: see **[INSTALL.md](INSTALL.md)**.
+
+## Troubleshooting
+- **"Workspace not found"** — pass `-SelectWorkspace` to pick from a list, `-WorkspaceId`, or
+  `-CapacityId` to create it.
+- **"Workspace has no capacity"** — assign a Fabric/Premium/PPU capacity, or pass `-CapacityId`.
+- **Report shows no data** — the refresh needs the app credentials bound as a Service Principal and
+  the consented WindowsDefenderATP permissions; re-run with `-Wait`, or open the dataset in the
+  service and click Refresh. Confirm the data source is bound under Settings > Data source
+  credentials (Service principal).
+- **Service-principal token fails** — confirm admin consent was granted and the "Service principals
+  can use Fabric APIs" tenant setting includes the app.
+- **Cleanup / teardown** — two parts: `pwsh ./deploy/Remove-Dashboard.ps1 -WorkspaceId <id>` removes
+  the published report + model (add `-RemoveWorkspace -Force` for a throwaway workspace); then
+  `pwsh ./deploy/Bootstrap-Deployment.ps1 -Mode Uninstall -AppId <app-guid> -WorkspaceId <id>`
+  revokes the app's Defender permissions, removes it from the workspace and deletes local `config.json`
+  (add `-DeleteApp` to also delete the app registration).
+
+For a fix for each specific error code, see **[FAILURE-CODES.md](FAILURE-CODES.md)**.
+
+## File layout
+```
+DefenderMigrationDashboard/
+├─ README.md
+├─ INSTALL.md               # step-by-step install guide
+├─ PERMISSIONS.md           # permission reference
+├─ pbip-project/            # TMDL model (Defender export-API query + deploy-time trend seed) + PBIR report
+├─ deploy/
+│  ├─ _Common.ps1           # shared sign-in, REST, workspace + SP-credential + trend-seed helpers
+│  ├─ Deploy-Dashboard.ps1
+│  ├─ Import-TrendInventory.ps1  # Trend Micro CSV → Defender inventory mapping (ingest)
+│  ├─ Remove-Dashboard.ps1  # cleanup / teardown (published report + model)
+│  ├─ Export-Report.ps1
+│  ├─ Bootstrap-Deployment.ps1  # app-registration setup + CheckPermissions + Uninstall
+│  ├─ assets/               # DeploymentTrend.kql + DeviceAvPosture.kql (deploy-time seed queries)
+│  └─ config.json.template
+└─ templates/               # KQL / M / DAX for the live path
+```
+
+## License
+
+Licensed under the **MIT License** — see [`LICENSE`](./LICENSE). The software is provided as-is,
+without warranty of any kind, and with no obligation to provide support, updates, or maintenance.
+Please try it in a test workspace before using it in production.
+
+## Author
+
+Cristian De Angelis

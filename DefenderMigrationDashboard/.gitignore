@@ -1,0 +1,23 @@
+# Local tokens / caches (never commit)
+*token*.txt
+*secret*.json
+config.json
+deploy/config.json
+output/
+.msal_cache.bin
+__pycache__/
+*.pyc
+
+# OneDrive / OS cruft
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Power BI Desktop local artifacts
+*.pbix
+.pbi/
+cache.abf
+
+# Local Trend->Defender mapping preview (contains device data)
+deploy/trend-migration-mapping.csv
+trend-migration-mapping.csv

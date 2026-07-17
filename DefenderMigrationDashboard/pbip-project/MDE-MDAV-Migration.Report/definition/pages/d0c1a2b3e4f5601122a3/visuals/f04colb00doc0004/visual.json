@@ -1,0 +1,318 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "f04colb00doc0004",
+  "position": {
+    "x": 440,
+    "y": 84,
+    "z": 6070,
+    "height": 624,
+    "width": 400,
+    "tabOrder": 6070
+  },
+  "visual": {
+    "visualType": "textbox",
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "VERSION COMPLIANCE \u2014 is protection up to date",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "11pt",
+                      "color": "#0B4A6F"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "AV Signature %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 devices with current antivirus definitions.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "AV Engine %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 devices with a current antivirus engine.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Platform %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 devices on the newest Defender antivirus platform build.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Sensor %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 devices on the newest Defender sensor version.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Up To Date / Behind / Out Of Date  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 how current a component is: newest, one step back, or significantly old.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Not On Latest %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 devices not on the newest version of at least one component.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": " ",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "6pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "NON-COMPLIANT DEVICES \u2014 what to fix",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "11pt",
+                      "color": "#0B4A6F"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Non-Compliant Devices  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 machines failing one or more checks.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Sensor Impaired  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 sensor running but degraded.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Sensor Not Reporting  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 sensor installed but silent.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Out Of Date (sensor / platform)  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 component badly behind and needs updating.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": " ",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "6pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "CONFIGURATION DRILL-DOWN \u2014 check by check",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "11pt",
+                      "color": "#0B4A6F"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Shows the four health signals per device so you can see exactly which check failed.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "DupDeviceId (new)  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "\u2014 flags a hostname linked to more than one device record, for investigation.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

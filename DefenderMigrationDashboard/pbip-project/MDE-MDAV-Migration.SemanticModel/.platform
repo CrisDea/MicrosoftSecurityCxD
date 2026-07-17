@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/gitIntegration/platformProperties/2.0.0/schema.json",
+  "metadata": {
+    "type": "SemanticModel",
+    "displayName": "MDE-MDAV-Migration"
+  },
+  "config": {
+    "version": "2.0",
+    "logicalId": "57b281ab-164f-45ca-8d01-fdcb7699aa4e"
+  }
+}

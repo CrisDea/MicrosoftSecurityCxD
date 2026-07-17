@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "e5a20000000000000002",
+  "position": {
+    "x": 20,
+    "y": 54,
+    "z": 1,
+    "height": 52,
+    "width": 1240,
+    "tabOrder": 1
+  },
+  "visual": {
+    "visualType": "textbox",
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Each device in your Trend export is matched to the current Defender inventory (same source as the dashboard). Exact matches first, then closest name for minor naming differences. Refresh by re-deploying with -TrendCsv, or run Import-TrendInventory.ps1. Use the Filters pane to slice by status or match type.",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

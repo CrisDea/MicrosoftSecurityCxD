@@ -1,0 +1,77 @@
+table DeploymentTrend
+
+	column Date
+		dataType: dateTime
+		sourceColumn: Date
+		formatString: General Date
+
+	column MachineGroup
+		dataType: string
+		sourceColumn: MachineGroup
+
+	column MdeOnboarded
+		dataType: int64
+		sourceColumn: MdeOnboarded
+
+	column TrendRemaining
+		dataType: int64
+		sourceColumn: TrendRemaining
+
+	column ActiveDevices
+		dataType: int64
+		sourceColumn: ActiveDevices
+
+	column StaleDevices
+		dataType: int64
+		sourceColumn: StaleDevices
+
+	column NonCompliant
+		dataType: int64
+		sourceColumn: NonCompliant
+
+	measure 'Trend Onboarded' = SUM(DeploymentTrend[MdeOnboarded])
+		formatString: 0
+
+	measure 'Trend Remaining Devices' = SUM(DeploymentTrend[TrendRemaining])
+		formatString: 0
+
+	measure 'Trend Active' = SUM(DeploymentTrend[ActiveDevices])
+		formatString: 0
+
+	measure 'Trend Stale' = SUM(DeploymentTrend[StaleDevices])
+		formatString: 0
+
+	measure 'Trend NonCompliant' = SUM(DeploymentTrend[NonCompliant])
+		formatString: 0
+
+	partition DeploymentTrend = m
+		mode: import
+		source =
+				let
+				    // ------------------------------------------------------------------
+				    // Trend history (v3.0.0): real 30-day, per-day x per-group retrospective
+				    // of onboarding / sensor-health counts. Generated at DEPLOY time by the
+				    // deploy script, which runs deploy/assets/DeploymentTrend.kql against the
+				    // Defender advanced-hunting REST API with an app-only token and embeds the
+				    // result below as a base64-encoded JSON literal (__TREND_SEED_B64__). It is
+				    // regenerated on every (re)deploy.
+				    //
+				    // Why materialised at deploy rather than queried at refresh: the advanced-
+				    // hunting endpoint is POST-only, and Power BI forbids a Web.Contents POST
+				    // body on any non-Anonymous datasource (Mashup 10347). Using Anonymous +
+				    // an in-query app-only token instead reintroduces a second data source
+				    // (login.microsoftonline.com), and a query whose securitycenter call depends
+				    // on that token trips the Power Query data-combination firewall on every
+				    // scheduled refresh -- with no TMDL/PBIP "ignore privacy levels" fast-combine
+				    // override available. Materialising the aggregated history (~100s of rows)
+				    // at deploy is the durable, scalable, firewall-free path. The live current-
+				    // state table (DeviceHealth) refreshes on the normal cadence via a Service-
+				    // Principal-bound datasource.
+				    // ------------------------------------------------------------------
+				    SeedB64 = "__TREND_SEED_B64__",
+				    Results = Json.Document(Binary.FromText(SeedB64, BinaryEncoding.Base64)),
+				    AsTable = Table.FromRecords(Results, {"Date", "MachineGroup", "MdeOnboarded", "TrendRemaining", "ActiveDevices", "StaleDevices", "NonCompliant"}, MissingField.UseNull),
+				    Dated = Table.TransformColumns(AsTable, {{"Date", each Date.FromText(Text.Start(Text.From(_), 10)), type date}}),
+				    Typed = Table.TransformColumnTypes(Dated, {{"MdeOnboarded", Int64.Type}, {"TrendRemaining", Int64.Type}, {"ActiveDevices", Int64.Type}, {"StaleDevices", Int64.Type}, {"NonCompliant", Int64.Type}})
+				in
+				    Typed
