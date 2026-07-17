@@ -43,10 +43,13 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          # (Optional) "write" PAT token. Uncomment the `repo_token` line below if:
-          # - you want to enable the Branch-Protection check on a *public* repository, or
-          # - you are installing Scorecard on a *private* repository
-          # To create the PAT, follow the steps in https://github.com/ossf/scorecard-action?tab=readme-ov-file#authentication-with-fine-grained-pat-optional.
+          # (Optional) "write" fine-grained PAT. Enables the Branch-Protection
+          # check on this *public* repo (the default GITHUB_TOKEN cannot read
+          # branch protection rules). Create SCORECARD_TOKEN as a repo secret
+          # (fine-grained PAT scoped to this repo: Administration Read-only +
+          # Metadata Read-only), then uncomment the line below. Do NOT uncomment
+          # until the secret exists - an empty repo_token fails the whole run.
+          # See https://github.com/ossf/scorecard-action?tab=readme-ov-file#authentication-with-fine-grained-pat-optional
           # repo_token: ${{ secrets.SCORECARD_TOKEN }}
 
           # Public repositories:
