@@ -14,7 +14,7 @@ Each subfolder is a self-contained, deployable package with its own README and q
 
 ## License
 
-Provided as-is, for use by Microsoft customers and partners. No warranty. Validate in a non-production tenant before any production deployment.
+Licensed under the [MIT License](./LICENSE). Provided as-is, without warranty, for use by Microsoft customers and partners. Validate in a non-production tenant before any production deployment.
 
 ## Author
 
