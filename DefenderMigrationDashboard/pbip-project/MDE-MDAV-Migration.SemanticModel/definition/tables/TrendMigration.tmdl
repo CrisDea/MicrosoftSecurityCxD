@@ -1,0 +1,82 @@
+table TrendMigration
+
+	column TrendDeviceName
+		dataType: string
+		sourceColumn: TrendDeviceName
+
+	column DefenderDeviceName
+		dataType: string
+		sourceColumn: DefenderDeviceName
+
+	column DeviceId
+		dataType: string
+		sourceColumn: DeviceId
+
+	column MatchType
+		dataType: string
+		sourceColumn: MatchType
+
+	column MatchScore
+		dataType: int64
+		sourceColumn: MatchScore
+		formatString: 0
+
+	column OnboardingStatus
+		dataType: string
+		sourceColumn: OnboardingStatus
+
+	column OSPlatform
+		dataType: string
+		sourceColumn: OSPlatform
+
+	column OSVersion
+		dataType: string
+		sourceColumn: OSVersion
+
+	column MigrationStatus
+		dataType: string
+		sourceColumn: MigrationStatus
+
+	measure 'Trend Source Devices' = COUNTROWS(TrendMigration)
+		formatString: 0
+
+	measure 'Trend Migrated' = CALCULATE(COUNTROWS(TrendMigration), TrendMigration[MigrationStatus] = "Migrated to Defender")
+		formatString: 0
+
+	measure 'Trend Onboarding Pending' = CALCULATE(COUNTROWS(TrendMigration), TrendMigration[MigrationStatus] = "Matched - not onboarded")
+		formatString: 0
+
+	measure 'Trend Not In Defender' = CALCULATE(COUNTROWS(TrendMigration), TrendMigration[MigrationStatus] = "Not found in Defender")
+		formatString: 0
+
+	measure 'Trend Migration %' = DIVIDE([Trend Migrated], [Trend Source Devices])
+		formatString: 0.0%
+
+	partition TrendMigration = m
+		mode: import
+		source =
+				let
+				    // ------------------------------------------------------------------
+				    // Trend -> Defender migration mapping (v3.3.0). Materialised at DEPLOY
+				    // time by the deploy script (or Import-TrendInventory.ps1): the Trend
+				    // Micro device export supplied via -TrendCsv is fuzzy-matched against the
+				    // current Defender device inventory (the same paged GET /api/machines
+				    // export endpoint that feeds DeviceHealth, called with an app-only token),
+				    // and the result is embedded below as a base64-encoded JSON literal
+				    // (__TRENDMIGRATION_SEED_B64__), regenerated on every (re)deploy.
+				    //
+				    // Why materialised at deploy rather than an interactive/Power Query upload:
+				    // the model refreshes in the Power BI service via a Service Principal with
+				    // no on-premises data gateway, so a local-file source could never refresh
+				    // in the service. Seeding the mapping at deploy is the durable, gateway-free
+				    // path - identical to the DeploymentTrend and AV-posture seeds.
+				    //
+				    // When no -TrendCsv is supplied the seed is an empty array, so the table
+				    // exists (its columns and measures resolve) but carries no rows.
+				    // ------------------------------------------------------------------
+				    SeedB64 = "__TRENDMIGRATION_SEED_B64__",
+				    Results = Json.Document(Binary.FromText(SeedB64, BinaryEncoding.Base64)),
+				    AsTable = Table.FromRecords(Results, {"TrendDeviceName", "DefenderDeviceName", "DeviceId", "MatchType", "MatchScore", "OnboardingStatus", "OSPlatform", "OSVersion", "MigrationStatus"}, MissingField.UseNull),
+				    Typed = Table.TransformColumnTypes(AsTable, {{"MatchScore", Int64.Type}})
+				in
+				    Typed

@@ -1,0 +1,72 @@
+// ============================================================================
+// DAX measure pack — Defender migration & version-compliance dashboard
+// Add to the model (Tabular Editor / Power BI Desktop). Tables assumed:
+//   DeviceInventory[DeviceId, DeviceClass, OSPlatform, OSVersion, OSBuild,
+//                   OnboardingStatus, SensorHealthState, LastSeen, MachineGroup]
+//   AvHealth[DeviceId, AvSignatureVersion, AvEngineVersion, AvPlatformVersion,
+//            MdeSensorVersion, AvLastSeen]
+//   LatestBaselines[Metric, LatestVersion]
+//   DateTable[Date]  (mark as date table; relate to DeviceInventory[LastSeen])
+// Relationship: DeviceInventory 1---* AvHealth on DeviceId (or 1:1).
+// ============================================================================
+
+// ---- Population ------------------------------------------------------------
+Total Devices := DISTINCTCOUNT ( DeviceInventory[DeviceId] )
+
+Client Devices :=
+CALCULATE ( [Total Devices], DeviceInventory[DeviceClass] = "Client" )
+
+Server Devices :=
+CALCULATE ( [Total Devices], DeviceInventory[DeviceClass] = "Server" )
+
+Onboarded Devices :=
+CALCULATE ( [Total Devices], DeviceInventory[OnboardingStatus] = "Onboarded" )
+
+// ---- Active vs Stale (StaleAfterDays parameter drives the cutoff) ----------
+Active Devices :=
+VAR Cutoff = UTCNOW () - [Stale After Days Value]
+RETURN CALCULATE ( [Total Devices], FILTER ( DeviceInventory, DeviceInventory[LastSeen] >= Cutoff ) )
+
+Stale Devices := [Total Devices] - [Active Devices]
+
+Stale % := DIVIDE ( [Stale Devices], [Total Devices] )
+
+// Reads the "Stale After Days" what-if parameter table if present, else default 7.
+Stale After Days Value :=
+IF ( ISFILTERED ( 'Stale After Days'[Stale After Days] ),
+     SELECTEDVALUE ( 'Stale After Days'[Stale After Days] ), 7 )
+
+// ---- Version compliance ----------------------------------------------------
+Latest Signature := LOOKUPVALUE ( LatestBaselines[LatestVersion], LatestBaselines[Metric], "AvSignatureVersion" )
+Latest Engine    := LOOKUPVALUE ( LatestBaselines[LatestVersion], LatestBaselines[Metric], "AvEngineVersion" )
+Latest Platform  := LOOKUPVALUE ( LatestBaselines[LatestVersion], LatestBaselines[Metric], "AvPlatformVersion" )
+
+Signature Compliant Devices :=
+VAR L = [Latest Signature]
+RETURN CALCULATE ( DISTINCTCOUNT ( AvHealth[DeviceId] ),
+    FILTER ( AvHealth, IF ( L = BLANK() || L = "", AvHealth[AvSignatureVersion] <> "", AvHealth[AvSignatureVersion] = L ) ) )
+
+Engine Compliant Devices :=
+VAR L = [Latest Engine]
+RETURN CALCULATE ( DISTINCTCOUNT ( AvHealth[DeviceId] ),
+    FILTER ( AvHealth, IF ( L = BLANK() || L = "", AvHealth[AvEngineVersion] <> "", AvHealth[AvEngineVersion] = L ) ) )
+
+Platform Compliant Devices :=
+VAR L = [Latest Platform]
+RETURN CALCULATE ( DISTINCTCOUNT ( AvHealth[DeviceId] ),
+    FILTER ( AvHealth, IF ( L = BLANK() || L = "", AvHealth[AvPlatformVersion] <> "", AvHealth[AvPlatformVersion] = L ) ) )
+
+Signature Compliance % := DIVIDE ( [Signature Compliant Devices], [Total Devices] )
+Engine Compliance %    := DIVIDE ( [Engine Compliant Devices],    [Total Devices] )
+Platform Compliance %  := DIVIDE ( [Platform Compliant Devices],  [Total Devices] )
+
+// Overall = compliant on all three
+Fully Compliant Devices :=
+CALCULATE ( DISTINCTCOUNT ( AvHealth[DeviceId] ),
+    FILTER ( AvHealth,
+        AvHealth[AvSignatureVersion] = [Latest Signature] &&
+        AvHealth[AvEngineVersion]    = [Latest Engine] &&
+        AvHealth[AvPlatformVersion]  = [Latest Platform] ) )
+
+Non-Compliant Devices := [Total Devices] - [Fully Compliant Devices]
+Overall Compliance %  := DIVIDE ( [Fully Compliant Devices], [Total Devices] )

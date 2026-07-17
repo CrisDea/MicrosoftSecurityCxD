@@ -1,0 +1,25 @@
+table Baselines
+
+	column Metric
+		dataType: string
+		sourceColumn: Metric
+
+	column LatestVersion
+		dataType: string
+		sourceColumn: LatestVersion
+
+	partition Baselines = m
+		mode: import
+		source =
+				let
+				    Source = #table(
+				        type table [Metric=text, LatestVersion=text],
+				        {
+					{"AV Signature", "1.453.250.0"},
+					{"AV Engine", "1.1.26050.11"},
+					{"Defender Platform", "4.18.26050.15"},
+					{"MDE Sensor", "10.8805"}
+				        }
+				    )
+				in
+				    Source

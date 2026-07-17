@@ -10,6 +10,7 @@ Each subfolder is a self-contained, deployable package with its own README and q
 | Folder | What it does |
 |---|---|
 | [`VulnerabilityManagement/ExportFullInventory/`](./VulnerabilityManagement/ExportFullInventory) | Bulk export of all software vulnerabilities (including `DiskPaths` folder paths) from Microsoft Defender for Endpoint at scale, without per-machine API throttling. Uses the `SoftwareVulnerabilitiesExport` "via files" endpoint. |
+| [`DefenderMigrationDashboard/`](./DefenderMigrationDashboard) | One-button Power BI dashboard for migrating from third-party AV/EDR (e.g. Trend Micro) to Microsoft Defender: deployment progression, AV/sensor version compliance, and a Trend-to-Defender migration mapping. Deploys the PBIP semantic model + report, binds a Service Principal, and enables scheduled refresh. |
 
 ## License
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "ae0b1f274c98420f291f",
+  "position": {
+    "x": 20,
+    "y": 52,
+    "z": 5900,
+    "height": 40,
+    "width": 1240,
+    "tabOrder": 5900
+  },
+  "visual": {
+    "visualType": "textbox",
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "All pies cover onboarded devices only; each slice shows the % of onboarded devices in that state (hover a slice for the device count). Use the Filters pane (top-right) to slice by platform, health, tags and more. The full device list is on the Device Inventory page.",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

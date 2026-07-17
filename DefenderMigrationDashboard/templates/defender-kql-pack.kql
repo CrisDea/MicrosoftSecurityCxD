@@ -1,0 +1,389 @@
+// ============================================================================
+// Defender for Endpoint — Migration & Version-Compliance KQL pack
+// ============================================================================
+// Use in: Microsoft Defender advanced hunting (security.microsoft.com/hunting),
+//         the Advanced Hunting API, or Log Analytics/Sentinel (if the Defender
+//         XDR connector streams these tables).
+//
+// PER-TABLE COLLECTION & DEDUP MODEL (verified against MS Learn advanced-hunting
+// schema docs, 2026-06 revision) — how each source collects data and therefore
+// how it MUST be deduplicated before use:
+//   DeviceInfo                              -> HAS Timestamp. Heartbeat/event table:
+//       many rows per device per day. Take arg_max(Timestamp,*) by DeviceId (device-
+//       object grain) or by DeviceName (hostname grain). Exclude MergedToDeviceId
+//       (merged-away objects). MachineGroup is sparsely populated -> resolve it from
+//       the latest NON-EMPTY row (see DEVICE-GROUP SPLIT CONVENTION below).
+//   DeviceTvmInfoGathering                  -> HAS Timestamp. TVM assessment events:
+//       multiple rows per device over time. Take arg_max(Timestamp,*) by DeviceId.
+//   DeviceTvmSecureConfigurationAssessment  -> HAS Timestamp ("date/time the record
+//       was generated"). Accumulates one row per (DeviceId, ConfigurationId) on EVERY
+//       assessment refresh -> take arg_max(Timestamp) by DeviceId, ConfigurationId
+//       BEFORE bagging results, or a stale GOOD/BAD can leak in.
+//   DeviceTvmSoftwareInventory              -> NO Timestamp column. Pure CURRENT
+//       snapshot: one row per (device, software). No time dedup possible or needed;
+//       summarize/make_set by DeviceId is correct as-is.
+//   DeviceTvmSecureConfigurationAssessmentKB-> static reference/KB (one row per
+//       ConfigurationId). No dedup.
+// COLLECTION CADENCE: the TVM assessment snapshots (config-assessment, software-
+//   inventory, info-gathering) surface a refreshed per-device snapshot only ~once a
+//   day, even though the cloud recomputes continuously. DeviceInfo updates far more
+//   often (heartbeat) but the migration metrics move day-over-day. => a dashboard
+//   refresh of ~1-2x/day is sufficient; more frequent refresh returns no newer data.
+//
+// SCHEMA NOTES (verify in your tenant — see references/api-catalog.md):
+//   DeviceInfo:              DeviceId, DeviceName, OSPlatform, OSVersion, OSBuild,
+//                            OnboardingStatus, SensorHealthState, DeviceType
+//                            (Workstation/Server/Mobile...), MachineGroup, Timestamp
+//   DeviceTvmInfoGathering:  AV health lives in AdditionalFields (dynamic). Common
+//                            keys: AvSignatureVersion, AvEngineVersion,
+//                            AvPlatformVersion, AvMode, AvIsSignatureUpToDate,
+//                            AvIsEngineUpToDate, AvIsPlatformUpToDate,
+//                            AvSignatureDataRefreshTime.
+//   Column/field names can drift by tenant/version. Run the "SCHEMA PROBE"
+//   query first and adjust the extend() key names below to match.
+// ============================================================================
+
+
+// ---------------------------------------------------------------------------
+// 0. SCHEMA PROBE — inspect what AV fields actually exist in YOUR tenant
+// ---------------------------------------------------------------------------
+DeviceTvmInfoGathering
+| take 50
+| project DeviceId, DeviceName, AdditionalFields
+// Expand keys to see exact naming:
+// | mv-expand bagexpansion=array AdditionalFields
+// | evaluate bag_unpack(AdditionalFields)
+
+
+// ---------------------------------------------------------------------------
+// 1. DEVICE INVENTORY (latest row per device) — the model's core dimension
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend DeviceClass = case(
+        DeviceType == "Server", "Server",
+        DeviceType in ("Workstation","Client","Desktop","Laptop"), "Client",
+        OSPlatform has "Server", "Server",
+        "Client")
+| project DeviceId, DeviceName, DeviceClass, DeviceType, OSPlatform, OSVersion,
+          OSBuild, OnboardingStatus, SensorHealthState, MachineGroup, LastSeen=Timestamp
+
+
+// ---------------------------------------------------------------------------
+// 2. AV HEALTH (latest per device) — signature / engine / platform versions
+//    PRIMARY (authoritative): Microsoft's own query parses the Context field of
+//    DeviceTvmSecureConfigurationAssessment. scid-2010 = AV mode, scid-2011 =
+//    signature/engine/last-update/platform versions. This is documented and
+//    stable — prefer it over the DeviceTvmInfoGathering.AdditionalFields keys.
+//    Source: microsoft/Microsoft-365-Defender-Hunting-Queries
+//            "General queries/MD AV Signature and Platform Version.md"
+// ---------------------------------------------------------------------------
+let avmode = DeviceTvmSecureConfigurationAssessment
+    | where ConfigurationId == "scid-2010" and isnotnull(Context)
+    | extend avdata = parsejson(Context)
+    | extend AvMode = case(tostring(avdata[0][0]) == '0','Active',
+                           tostring(avdata[0][0]) == '1','Passive',
+                           tostring(avdata[0][0]) == '4','EDR Block Mode',
+                           tostring(avdata[0][0]) == '5','Passive Audit','Unknown')
+    | project DeviceId, AvMode;
+DeviceTvmSecureConfigurationAssessment
+| where ConfigurationId == "scid-2011" and isnotnull(Context)
+| extend avdata = parsejson(Context)
+| extend AvSignatureVersion   = tostring(avdata[0][0]),
+         AvEngineVersion       = tostring(avdata[0][1]),
+         AvSignatureLastUpdated= tostring(avdata[0][2]),
+         AvPlatformVersion     = tostring(avdata[0][3])
+| project DeviceId, DeviceName, OSPlatform, AvSignatureVersion, AvEngineVersion,
+          AvSignatureLastUpdated, AvPlatformVersion, IsCompliant, IsApplicable
+| join kind=leftouter (avmode) on DeviceId
+| project-away DeviceId1
+
+// ALTERNATIVE (undocumented, may drift) — DeviceTvmInfoGathering.AdditionalFields:
+//   DeviceTvmInfoGathering
+//   | summarize arg_max(Timestamp, *) by DeviceId
+//   | extend AvSignatureVersion = tostring(AdditionalFields.AvSignatureVersion),
+//            AvEngineVersion     = tostring(AdditionalFields.AvEngineVersion),
+//            AvPlatformVersion   = tostring(AdditionalFields.AvPlatformVersion)
+// PREFERRED OUTSIDE HUNTING: the dedicated Export Device Antivirus Health Report
+//   API (device-health-export-antivirus-health-report-api) returns these per device.
+
+
+// ---------------------------------------------------------------------------
+// 3. MDE SENSOR / CLIENT VERSION (from DeviceInfo when exposed, else Info-
+//    Gathering). Some tenants surface ClientVersion in DeviceInfo.
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(30d)
+| summarize arg_max(Timestamp, *) by DeviceId
+| project DeviceId, DeviceName, ClientVersion=column_ifexists("ClientVersion",""),
+          OSPlatform, OSVersion, OSBuild
+
+
+// ---------------------------------------------------------------------------
+// 4. ACTIVE vs STALE TREND (time series) — migration maturity / noise reduction
+//    "Stale" = no sensor data in the last N days. Bucketed daily.
+//    Parameter: staleAfterDays.
+// ---------------------------------------------------------------------------
+let staleAfterDays = 7d;
+let windowDays = 90d;
+DeviceInfo
+| where Timestamp > ago(windowDays)
+| summarize LastSeen = max(Timestamp) by DeviceId, bin(Timestamp, 1d)
+| summarize LastSeenEver = max(LastSeen) by DeviceId
+| extend Status = iff(LastSeenEver > ago(staleAfterDays), "Active", "Stale")
+| summarize Devices = dcount(DeviceId) by Status
+// For a true daily trend, run per-day: for each day D, count devices whose
+// max(Timestamp) within [D-staleAfterDays, D] exists => Active on D.
+// See references/trend-query.md for the windowed version.
+
+
+// ---------------------------------------------------------------------------
+// 5. VERSION-COMPLIANCE KPI feed — join inventory + AV health, flag "not latest"
+//    Latest baselines are passed as parameters from Power BI (see M template).
+// ---------------------------------------------------------------------------
+let latestSignature = "";   // set from a control table / parameter
+let latestEngine    = "";
+let latestPlatform  = "";
+let inv = DeviceInfo | where Timestamp > ago(30d) | summarize arg_max(Timestamp,*) by DeviceId;
+let av  = DeviceTvmInfoGathering | where Timestamp > ago(30d) | summarize arg_max(Timestamp,*) by DeviceId;
+inv
+| join kind=leftouter (av) on DeviceId
+| extend AvSignatureVersion = tostring(AdditionalFields.AvSignatureVersion),
+         AvEngineVersion     = tostring(AdditionalFields.AvEngineVersion),
+         AvPlatformVersion   = tostring(AdditionalFields.AvPlatformVersion)
+| extend SignatureCompliant = iff(isempty(latestSignature), AvSignatureVersion != "", AvSignatureVersion == latestSignature),
+         EngineCompliant     = iff(isempty(latestEngine),    AvEngineVersion   != "", AvEngineVersion   == latestEngine),
+         PlatformCompliant   = iff(isempty(latestPlatform),  AvPlatformVersion != "", AvPlatformVersion == latestPlatform)
+| project DeviceId, DeviceName, OSPlatform, OSVersion, OSBuild, OnboardingStatus,
+          SensorHealthState, MachineGroup, AvSignatureVersion, AvEngineVersion,
+          AvPlatformVersion, SignatureCompliant, EngineCompliant, PlatformCompliant
+
+
+// ===========================================================================
+// DEDUP CONVENTION (apply to EVERY query in this pack)
+// ---------------------------------------------------------------------------
+//  * Primary dedup:   summarize arg_max(Timestamp, *) by DeviceId
+//                     -> keeps only the latest record per device object.
+//  * VDI / non-persistent Citrix: hostnames are reused, producing MULTIPLE
+//    DeviceId objects for the same physical/virtual machine. To count UNIQUE
+//    machines (not stale clones), also:
+//        | where isempty(MergedToDeviceId)          // drop objects merged away
+//        | summarize arg_max(Timestamp, *) by DeviceName   // 2nd-level dedup
+//    Only apply the DeviceName-level dedup when you explicitly want one row per
+//    hostname (e.g. VDI counts); for device-object-level triage keep DeviceId.
+//  * LastSeenDays parameter: every query below reads a single window variable
+//    so the report's "Last seen" slicer controls the horizon instead of a
+//    hard-coded ago(). Bind LastSeenDays from a Power BI parameter.
+// ===========================================================================
+let LastSeenDays = 30d;   // <-- bind from Power BI "Last seen" parameter
+
+
+// ===========================================================================
+// DEVICE-GROUP SPLIT CONVENTION (rbacGroup bridge) — how to slice devices by
+// machine group WITHOUT blank buckets. Learned from the Microsoft "Device
+// Health" template (rbacGroupsDevicesMapping / DevicesWithMultipleDeviceIDs).
+// ---------------------------------------------------------------------------
+//  * MachineGroup is NOT populated on every DeviceInfo row. A plain
+//    `arg_max(Timestamp, *) by DeviceId` can land on a row whose MachineGroup is
+//    empty -> the device falls into a blank group in every slicer/split.
+//  * FIX: re-derive the group from the latest row where MachineGroup is non-empty
+//    and join it back as a bridge (rename rbacGroupName / MachineGroup). Devices
+//    that never reported a group -> "Unassigned" (never blank).
+//        let GroupMap = DeviceInfo
+//            | where Timestamp > ago(LastSeenDays)
+//            | where isempty(MergedToDeviceId) and isnotempty(MachineGroup)
+//            | summarize arg_max(Timestamp, MachineGroup) by DeviceId
+//            | project DeviceId, MachineGroupResolved = MachineGroup;
+//        // then, on the deduped inventory:
+//        | join kind=leftouter GroupMap on DeviceId
+//        | extend MachineGroup = coalesce(MachineGroupResolved,
+//                     iff(isempty(MachineGroup), "Unassigned", MachineGroup))
+//  * AMBIGUOUS HOSTNAMES: a DeviceName mapping to >= 2 non-merged DeviceIds is a
+//    duplicate. The reference EXCLUDES them from facts and lists them separately;
+//    this pack instead FLAGS them (DupDeviceId = "Yes") so they stay counted but
+//    can be isolated/triaged:
+//        let DupNames = toscalar(DeviceInfo
+//            | where isempty(MergedToDeviceId)
+//            | summarize dcount(DeviceId) by DeviceName
+//            | where dcount_DeviceId >= 2 | summarize make_set(DeviceName));
+//        | extend DupDeviceId = iff(set_has_element(DupNames, DeviceName), "Yes", "No")
+//  * Time window: prefer `between (ago(N) .. ago(1m))` over `> ago(N)` so the most
+//    recent (partially-ingested) minute does not skew counts/trends.
+// ===========================================================================
+
+
+// ---------------------------------------------------------------------------
+// 6. TREND MICRO DETECTION (real, from TVM software inventory)
+//    Trend is a security PRODUCT FAMILY. Detect any Trend endpoint agent so the
+//    report can show "Trend still installed" (migration not complete on box).
+//    Vendor casing is not guaranteed -> use has (substring), not ==.
+//    Product names verified in research: Apex One / Apex One Security Agent,
+//    OfficeScan / OfficeScan Client, Deep Security Agent, ServerProtect,
+//    Worry-Free Business Security Agent, Endpoint Sensor, Cloud One.
+//    Source: DeviceTvmSoftwareInventory (SoftwareVendor / SoftwareName).
+// ---------------------------------------------------------------------------
+let trend = DeviceTvmSoftwareInventory
+    | where SoftwareVendor has "trend"
+         or SoftwareName has_any ("Apex One","OfficeScan","Deep Security",
+              "Worry-Free","ServerProtect","Endpoint Sensor","Security Agent",
+              "Client/Server Security","Cloud One")
+    | summarize TrendProducts = make_set(SoftwareName) by DeviceId
+    | extend TrendInstalled = "Trend present";
+DeviceInfo
+| where Timestamp > ago(LastSeenDays)
+| summarize arg_max(Timestamp, *) by DeviceId
+| join kind=leftouter (trend) on DeviceId
+| extend TrendInstalled = coalesce(TrendInstalled, "No Trend"),
+         TrendProducts   = coalesce(TrendProducts, dynamic([]))
+| project DeviceId, DeviceName, TrendInstalled, TrendProducts
+
+
+// ---------------------------------------------------------------------------
+// 7. HEALTHY FLAG (real, mirrors the MDE Major Health Check secure-config tests)
+//    A device is Healthy = Onboarded AND no APPLICABLE secure-config test is BAD.
+//    Result rule (from the health check): IsApplicable==0 -> "N/A",
+//    IsCompliant==1 -> "GOOD", else "BAD". Any BAD on an applicable test = Unhealthy.
+//    scids cover EDR sensor, tamper, AV mode/signature, realtime, behaviour,
+//    PUA, cloud, EDR update, network protection (Win/Mac/Lin variants).
+// ---------------------------------------------------------------------------
+let healthScids = dynamic([
+    "scid-2000","scid-2001","scid-5001","scid-6001","scid-2002","scid-5002",
+    "scid-6002","scid-2003","scid-5092","scid-2010","scid-2011","scid-5095",
+    "scid-6095","scid-2012","scid-5090","scid-6090","scid-91","scid-2013",
+    "scid-5091","scid-6091","scid-2016","scid-5094","scid-6094","scid-2030","scid-96"]);
+let onboarded = DeviceInfo
+    | where Timestamp > ago(LastSeenDays)
+    | summarize arg_max(Timestamp, *) by DeviceId
+    | where OnboardingStatus == "Onboarded"
+    | project DeviceId, DeviceName;
+DeviceTvmSecureConfigurationAssessment
+| where ConfigurationId in (healthScids)
+| extend Result = case(IsApplicable == 0, "N/A", IsCompliant == 1, "GOOD", "BAD")
+| summarize BadTests = countif(Result == "BAD") by DeviceId
+| join kind=inner (onboarded) on DeviceId
+| extend Healthy = iff(BadTests == 0, "Healthy", "Unhealthy")
+| project DeviceId, DeviceName, Healthy, BadTests
+// Devices NOT in DeviceTvmSecureConfigurationAssessment but onboarded -> treat
+// as "Healthy (no failing tests reported)"; devices not onboarded -> "N/A - not onboarded".
+
+
+// ---------------------------------------------------------------------------
+// 8. CLOUD PLATFORM (real) — Azure / AWS / GCP / on-premises for the server list
+//    DeviceInfo.CloudPlatforms is a plural string; empty/"Unknown" => on-prem.
+//    (Some tenants expose it in AdditionalFields — probe if the column is absent.)
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(LastSeenDays)
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend Cloud = tostring(column_ifexists("CloudPlatforms",""))
+| extend CloudLocation = case(
+        Cloud has "Azure", "Azure",
+        Cloud has "AWS" or Cloud has "Amazon", "AWS",
+        Cloud has "GCP" or Cloud has "Google", "GCP",
+        isempty(Cloud) or Cloud == "Unknown", "On-premises",
+        Cloud)
+| project DeviceId, DeviceName, DeviceType, CloudLocation, Cloud
+
+
+// ---------------------------------------------------------------------------
+// 9. AD DOMAIN (DERIVED, not a native MDE field) — parsed from the FQDN.
+//    CAVEAT: MDE has no first-class AD-domain column. This derives domain from
+//    the DeviceName FQDN suffix; workgroup / Azure-AD-joined hosts have no dot
+//    and are labelled "Azure AD joined / Workgroup". Validate against your naming.
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(LastSeenDays)
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend ADDomain = iff(DeviceName has ".",
+            substring(DeviceName, indexof(DeviceName, ".") + 1),
+            "Azure AD joined / Workgroup")
+| project DeviceId, DeviceName, ADDomain
+
+
+// ---------------------------------------------------------------------------
+// 10. CITRIX / VDI TRANSIENT DEVICES (real) — accurate unique-machine handling
+//    Non-persistent VDI reuses hostnames -> duplicate DeviceId objects. Flag by
+//    IsTransient OR VDI/NonPersistent tags, exclude merged-away clones, and count
+//    unique by DeviceName so the transient scope does NOT inflate the estate.
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(LastSeenDays)
+| where isempty(MergedToDeviceId)                     // drop objects merged away
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend Tags = strcat(tostring(column_ifexists("DeviceManualTags","")), " ",
+                       tostring(column_ifexists("DeviceDynamicTags","")))
+| extend IsVDI = iff(tobool(column_ifexists("IsTransient", false))
+                     or Tags has "VDI" or Tags has "NonPersistent"
+                     or DeviceSubtype has "VDI", "VDI", "Physical/Persistent")
+| summarize arg_max(Timestamp, *) by DeviceName        // unique machine per hostname
+| project DeviceId, DeviceName, IsVDI, DeviceSubtype=column_ifexists("DeviceSubtype","")
+
+
+// ---------------------------------------------------------------------------
+// 11. MASTER DEVICE FACT (real) — one deduped row per device joining every
+//     dimension above. This is the recommended single source for the semantic
+//     model's DeviceHealth table (bind LastSeenDays from the report parameter).
+// ---------------------------------------------------------------------------
+let inv2 = DeviceInfo
+    | where Timestamp > ago(LastSeenDays)
+    | where isempty(MergedToDeviceId)
+    | summarize arg_max(Timestamp, *) by DeviceId;
+let trend2 = DeviceTvmSoftwareInventory
+    | where SoftwareVendor has "trend"
+         or SoftwareName has_any ("Apex One","OfficeScan","Deep Security","Worry-Free",
+              "ServerProtect","Endpoint Sensor","Security Agent","Cloud One")
+    | summarize TrendProducts = make_set(SoftwareName) by DeviceId;
+let health2 = DeviceTvmSecureConfigurationAssessment
+    | where ConfigurationId in (healthScids)
+    | extend Result = case(IsApplicable == 0, "N/A", IsCompliant == 1, "GOOD", "BAD")
+    | summarize BadTests = countif(Result == "BAD") by DeviceId;
+inv2
+| join kind=leftouter (trend2) on DeviceId
+| join kind=leftouter (health2) on DeviceId
+| extend DeviceClass = iff(DeviceType == "Server" or OSPlatform has "Server", "Server", "Client"),
+         Cloud = tostring(column_ifexists("CloudPlatforms","")),
+         Tags = strcat(tostring(column_ifexists("DeviceManualTags","")), " ",
+                       tostring(column_ifexists("DeviceDynamicTags",""))),
+         TrendInstalled = iff(array_length(TrendProducts) > 0, "Trend present", "No Trend")
+| extend CloudLocation = case(Cloud has "Azure","Azure", Cloud has "AWS" or Cloud has "Amazon","AWS",
+             Cloud has "GCP" or Cloud has "Google","GCP", isempty(Cloud) or Cloud == "Unknown","On-premises", Cloud),
+         ADDomain = iff(DeviceName has ".", substring(DeviceName, indexof(DeviceName,".")+1), "Azure AD joined / Workgroup"),
+         IsVDI = iff(tobool(column_ifexists("IsTransient", false)) or Tags has "VDI" or Tags has "NonPersistent", "VDI", "Physical/Persistent"),
+         Healthy = case(OnboardingStatus != "Onboarded", "N/A - not onboarded",
+                        isnull(BadTests) or BadTests == 0, "Healthy", "Unhealthy")
+| project DeviceId, DeviceName, DeviceClass, DeviceType, OSPlatform, OSVersion, OSBuild,
+          OnboardingStatus, SensorHealthState, MachineGroup, LastSeen=Timestamp,
+          CloudLocation, ADDomain, IsVDI, TrendInstalled, TrendProducts, Healthy, BadTests
+
+
+// ---------------------------------------------------------------------------
+// 12. MANAGED BY / ONBOARDING CHANNEL (real) — device management tooling.
+//     The Defender portal "Managed by" field only distinguishes Intune /
+//     Configuration Manager / MDE; Group Policy and Local Script onboarding
+//     BOTH collapse to "MDE" and must be inferred from the onboarding method.
+//     Sources: DeviceInfo.OnboardingStatus, the OnboardingMethod/registry tags,
+//     and co-management (MDM) enrollment. Arc-connected servers surface as
+//     "Microsoft Defender for Cloud (Arc)". Bind to the DeviceHealth[ManagedBy]
+//     column. Values: Intune, Configuration Manager, Group Policy, Local Script,
+//     Microsoft Defender for Endpoint, Microsoft Defender for Cloud (Arc), Unmanaged.
+// ---------------------------------------------------------------------------
+DeviceInfo
+| where Timestamp > ago(LastSeenDays)
+| where isempty(MergedToDeviceId)
+| summarize arg_max(Timestamp, *) by DeviceId
+| extend MgmtRaw = tolower(strcat(tostring(column_ifexists("OnboardingStatus","")), " ",
+                                  tostring(column_ifexists("DeviceManualTags","")), " ",
+                                  tostring(column_ifexists("DeviceDynamicTags","")), " ",
+                                  tostring(column_ifexists("LoggedOnUsers",""))))
+// Prefer the real management channel where MDE exposes it; otherwise infer from
+// onboarding method / Arc / co-management. Adjust matches to your tenant's tags.
+| extend ManagedBy = case(
+        MgmtRaw has "intune" or MgmtRaw has "mdm",                 "Intune",
+        MgmtRaw has "configmgr" or MgmtRaw has "sccm" or MgmtRaw has "configuration manager", "Configuration Manager",
+        MgmtRaw has "arc" or MgmtRaw has "defender for cloud",     "Microsoft Defender for Cloud (Arc)",
+        MgmtRaw has "group policy" or MgmtRaw has "gpo",           "Group Policy",
+        MgmtRaw has "local script" or MgmtRaw has "manual",        "Local Script",
+        OnboardingStatus == "Onboarded",                          "Microsoft Defender for Endpoint",
+        "Unmanaged")
+| project DeviceId, DeviceName, OnboardingStatus, ManagedBy

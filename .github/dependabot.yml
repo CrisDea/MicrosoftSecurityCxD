@@ -1,0 +1,21 @@
+# Dependabot configuration for the MicrosoftSecurityCxD monorepo.
+# Projects here are PowerShell + Power BI (PBIP) packages with no
+# npm/NuGet/pip/Go manifests, so the supported ecosystem with managed
+# dependencies is GitHub Actions (the workflows under .github/). Dependabot
+# keeps those actions' pinned SHAs current, preserving the OpenSSF Scorecard
+# "Pinned-Dependencies" score.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: saturday
+      time: '02:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    labels:
+      - dependencies
+      - github-actions

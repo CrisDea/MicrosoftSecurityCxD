@@ -1,0 +1,323 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/page/1.4.0/schema.json",
+  "name": "6c2fb5ac5faca6e2f536",
+  "displayName": "Configuration Drill-down",
+  "displayOption": "FitToPage",
+  "height": 720,
+  "width": 1280,
+  "objects": {
+    "background": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#EEF3FA'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "outspace": [
+      {
+        "properties": {
+          "color": {
+            "solid": {
+              "color": {
+                "expr": {
+                  "Literal": {
+                    "Value": "'#0B1E3D'"
+                  }
+                }
+              }
+            }
+          },
+          "transparency": {
+            "expr": {
+              "Literal": {
+                "Value": "0D"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "filterConfig": {
+    "filters": [
+      {
+        "name": "e1onb0filter0cfg0drill",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OnboardingStatus"
+          }
+        },
+        "type": "Categorical",
+        "filter": {
+          "Version": 2,
+          "From": [
+            {
+              "Name": "d",
+              "Entity": "DeviceHealth",
+              "Type": 0
+            }
+          ],
+          "Where": [
+            {
+              "Condition": {
+                "In": {
+                  "Expressions": [
+                    {
+                      "Column": {
+                        "Expression": {
+                          "SourceRef": {
+                            "Source": "d"
+                          }
+                        },
+                        "Property": "OnboardingStatus"
+                      }
+                    }
+                  ],
+                  "Values": [
+                    [
+                      {
+                        "Literal": {
+                          "Value": "'Onboarded'"
+                        }
+                      }
+                    ]
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "ddcard00DeviceTy",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceType"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Client / Server",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard01OSPlatfo",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OSPlatform"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "OS platform",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard02OSDistri",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "OSDistribution"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "OS version",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard03Healthy",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "Healthy"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Healthy (all checks)",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard04ManagedB",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "ManagedBy"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Managed by / onboarding",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard05TrendIns",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "TrendInstalled"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Trend installed",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard06ADDomain",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "ADDomain"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "AD domain",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard07CloudLoc",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "CloudLocation"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Cloud / on-prem",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard08IsVDI",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "IsVDI"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Citrix VDI",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard09DeviceSt",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceStatus"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Active / Stale",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard10SensorCo",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "Sensor Connectivity State"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Sensor connectivity",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard11DeviceTa",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "DeviceTags"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "MDE tags",
+        "howCreated": "User"
+      },
+      {
+        "name": "ddcard12LastSeen",
+        "field": {
+          "Column": {
+            "Expression": {
+              "SourceRef": {
+                "Entity": "DeviceHealth"
+              }
+            },
+            "Property": "LastSeen"
+          }
+        },
+        "type": "Categorical",
+        "displayName": "Last seen",
+        "howCreated": "User"
+      }
+    ]
+  }
+}

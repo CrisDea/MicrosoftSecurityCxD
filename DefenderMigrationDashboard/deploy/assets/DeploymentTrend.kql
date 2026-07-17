@@ -1,0 +1,28 @@
+let Days = 30d;
+// [ADD 2.9.7] Device -> current group bridge (latest NON-EMPTY MachineGroup) so the migration
+// trend can be split by device group without landing on a blank group.
+let GroupMap = DeviceInfo
+| where Timestamp between (ago(Days) .. ago(1m))
+| where isempty(MergedToDeviceId) and isnotempty(MachineGroup)
+| summarize arg_max(Timestamp, MachineGroup) by DeviceId
+| project DeviceId, MachineGroup;
+let Base = DeviceInfo
+| where Timestamp between (ago(Days) .. ago(1m))
+| where isempty(MergedToDeviceId)
+| extend Day = startofday(Timestamp)
+| summarize arg_max(Timestamp, OnboardingStatus, SensorHealthState) by DeviceId, Day
+| join kind=leftouter GroupMap on DeviceId
+| extend MachineGroup = coalesce(MachineGroup, "Unassigned")
+| project-away DeviceId1;
+let MaxDay = toscalar(Base | summarize max(Day));
+Base
+| summarize
+    MdeOnboarded    = countif(OnboardingStatus == "Onboarded"),
+    TrendRemaining  = countif(OnboardingStatus != "Onboarded"),
+    ActiveDevices   = countif(SensorHealthState == "Active" and OnboardingStatus == "Onboarded"),
+    StaleDevices    = countif(SensorHealthState != "Active" and OnboardingStatus == "Onboarded"),
+    NonCompliantRaw = countif(OnboardingStatus == "Onboarded" and SensorHealthState != "Active")
+  by Day, MachineGroup
+| extend NonCompliant = iff(Day == MaxDay, NonCompliantRaw, 0)
+| project Date = Day, MachineGroup, MdeOnboarded, TrendRemaining, ActiveDevices, StaleDevices, NonCompliant
+| sort by Date asc, MachineGroup asc

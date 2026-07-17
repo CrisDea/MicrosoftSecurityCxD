@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
+  "name": "4b62a1d68042cfe25717",
+  "position": {
+    "x": 20,
+    "y": 52,
+    "z": 5900,
+    "height": 40,
+    "width": 970,
+    "tabOrder": 5900
+  },
+  "visual": {
+    "visualType": "textbox",
+    "drillFilterOtherVisuals": true,
+    "objects": {
+      "general": [
+        {
+          "properties": {
+            "paragraphs": [
+              {
+                "textRuns": [
+                  {
+                    "value": "Drill-through target. Right-click a device (a pie drilled to device level, or any detail-table row) \u2192 Drill through \u2192 Device Details, then right-click the table \u2192 Export data for the complete record.",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
