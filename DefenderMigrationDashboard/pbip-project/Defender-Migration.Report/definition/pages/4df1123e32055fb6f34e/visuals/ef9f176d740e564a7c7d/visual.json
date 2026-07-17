@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "ef9f176d740e564a7c7d",
   "position": {
-    "x": 505,
+    "x": 631,
     "y": 220,
     "z": 3900,
     "height": 168,
-    "width": 475,
+    "width": 629,
     "tabOrder": 3900
   },
   "visual": {
@@ -211,7 +211,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Fully migrated & configured \u2014 Client vs Server'"
+                  "Value": "'Fully migrated & configured — Client vs Server'"
                 }
               }
             },

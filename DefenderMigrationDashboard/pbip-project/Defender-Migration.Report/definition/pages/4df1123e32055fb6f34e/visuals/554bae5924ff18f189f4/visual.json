@@ -6,7 +6,7 @@
     "y": 574,
     "z": 3700,
     "height": 132,
-    "width": 960,
+    "width": 1240,
     "tabOrder": 3700
   },
   "visual": {
@@ -211,7 +211,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Healthy devices \u2014 by OS version'"
+                  "Value": "'Healthy devices — by OS version'"
                 }
               }
             },

@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "65002939a2849ce60131",
   "position": {
-    "x": 510,
-    "y": 196,
+    "x": 20,
+    "y": 162,
     "z": 3900,
     "height": 300,
-    "width": 470,
+    "width": 406,
     "tabOrder": 3900
   },
   "visual": {
@@ -168,11 +168,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSUpdated"
+                  "Property": "DeviceType"
                 }
               },
-              "queryRef": "DeviceHealth.OSUpdated",
-              "nativeQueryRef": "OSUpdated",
+              "queryRef": "DeviceHealth.DeviceType",
+              "nativeQueryRef": "DeviceType",
               "active": true
             }
           ]
@@ -187,11 +187,39 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Total Devices"
+                  "Property": "OS Supported"
                 }
               },
-              "queryRef": "DeviceHealth.Total Devices",
-              "nativeQueryRef": "Total Devices"
+              "queryRef": "DeviceHealth.OS Supported",
+              "nativeQueryRef": "OS Supported"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS EOL Imminent"
+                }
+              },
+              "queryRef": "DeviceHealth.OS EOL Imminent",
+              "nativeQueryRef": "OS EOL Imminent"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS Unsupported"
+                }
+              },
+              "queryRef": "DeviceHealth.OS Unsupported",
+              "nativeQueryRef": "OS Unsupported"
             }
           ]
         }
@@ -211,7 +239,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'OS update compliance'"
+                  "Value": "'OS lifecycle support (by device type)'"
                 }
               }
             },
@@ -256,6 +284,62 @@
                 }
               }
             }
+          }
+        }
+      ],
+      "dataPoint": [
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#107C10'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS Supported"
+          }
+        },
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#F7A500'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS EOL Imminent"
+          }
+        },
+        {
+          "properties": {
+            "fill": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#D13438'"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "selector": {
+            "metadata": "DeviceHealth.OS Unsupported"
           }
         }
       ]

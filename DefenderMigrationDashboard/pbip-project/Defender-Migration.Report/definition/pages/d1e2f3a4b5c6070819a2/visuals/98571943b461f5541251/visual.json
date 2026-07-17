@@ -168,11 +168,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "DeviceName"
+                  "Property": "LastSeen"
                 }
               },
-              "queryRef": "DeviceHealth.DeviceName",
-              "nativeQueryRef": "DeviceName"
+              "queryRef": "DeviceHealth.LastSeen",
+              "nativeQueryRef": "LastSeen"
             },
             {
               "field": {
@@ -196,11 +196,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "DeviceType"
+                  "Property": "DeviceName"
                 }
               },
-              "queryRef": "DeviceHealth.DeviceType",
-              "nativeQueryRef": "DeviceType"
+              "queryRef": "DeviceHealth.DeviceName",
+              "nativeQueryRef": "DeviceName"
             },
             {
               "field": {
@@ -210,11 +210,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSDistribution"
+                  "Property": "CloudPlatforms"
                 }
               },
-              "queryRef": "DeviceHealth.OSDistribution",
-              "nativeQueryRef": "OSDistribution"
+              "queryRef": "DeviceHealth.CloudPlatforms",
+              "nativeQueryRef": "CloudPlatforms"
             },
             {
               "field": {
@@ -224,11 +224,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "DeviceTags"
+                  "Property": "ManagementMethods"
                 }
               },
-              "queryRef": "DeviceHealth.DeviceTags",
-              "nativeQueryRef": "DeviceTags"
+              "queryRef": "DeviceHealth.ManagementMethods",
+              "nativeQueryRef": "ManagementMethods"
             },
             {
               "field": {
@@ -252,11 +252,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Healthy"
+                  "Property": "OSDistribution"
                 }
               },
-              "queryRef": "DeviceHealth.Healthy",
-              "nativeQueryRef": "Healthy"
+              "queryRef": "DeviceHealth.OSDistribution",
+              "nativeQueryRef": "OSDistribution"
             },
             {
               "field": {
@@ -266,11 +266,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "ManagedBy"
+                  "Property": "OSVersionInfo"
                 }
               },
-              "queryRef": "DeviceHealth.ManagedBy",
-              "nativeQueryRef": "ManagedBy"
+              "queryRef": "DeviceHealth.OSVersionInfo",
+              "nativeQueryRef": "OSVersionInfo"
             },
             {
               "field": {
@@ -280,11 +280,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "AVMode"
+                  "Property": "OSBuildVersion"
                 }
               },
-              "queryRef": "DeviceHealth.AVMode",
-              "nativeQueryRef": "AVMode"
+              "queryRef": "DeviceHealth.OSBuildVersion",
+              "nativeQueryRef": "OSBuildVersion"
             },
             {
               "field": {
@@ -294,11 +294,95 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "SensorCompliant"
+                  "Property": "OSLatestVer"
                 }
               },
-              "queryRef": "DeviceHealth.SensorCompliant",
-              "nativeQueryRef": "SensorCompliant"
+              "queryRef": "DeviceHealth.OSLatestVer",
+              "nativeQueryRef": "OSLatestVer"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSUpdated"
+                }
+              },
+              "queryRef": "DeviceHealth.OSUpdated",
+              "nativeQueryRef": "OSUpdated"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EOS"
+                }
+              },
+              "queryRef": "DeviceHealth.EOS",
+              "nativeQueryRef": "EOS"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "ExposureLevel"
+                }
+              },
+              "queryRef": "DeviceHealth.ExposureLevel",
+              "nativeQueryRef": "ExposureLevel"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "ConnectivityType"
+                }
+              },
+              "queryRef": "DeviceHealth.ConnectivityType",
+              "nativeQueryRef": "ConnectivityType"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRImpairedCommunications"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRImpairedCommunications",
+              "nativeQueryRef": "EDRImpairedCommunications"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRSensorDataCollection"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRSensorDataCollection",
+              "nativeQueryRef": "EDRSensorDataCollection"
             },
             {
               "field": {
@@ -322,11 +406,25 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "AVSigCompliant"
+                  "Property": "EDRLatestVersion"
                 }
               },
-              "queryRef": "DeviceHealth.AVSigCompliant",
-              "nativeQueryRef": "AVSigCompliant"
+              "queryRef": "DeviceHealth.EDRLatestVersion",
+              "nativeQueryRef": "EDRLatestVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRUpdate"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRUpdate",
+              "nativeQueryRef": "EDRUpdate"
             },
             {
               "field": {
@@ -341,6 +439,146 @@
               },
               "queryRef": "DeviceHealth.AVProductVersion",
               "nativeQueryRef": "AVProductVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVPlatformRing"
+                }
+              },
+              "queryRef": "DeviceHealth.AVPlatformRing",
+              "nativeQueryRef": "AVPlatformRing"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AntivirusReporting"
+                }
+              },
+              "queryRef": "DeviceHealth.AntivirusReporting",
+              "nativeQueryRef": "AntivirusReporting"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AntivirusEnabled"
+                }
+              },
+              "queryRef": "DeviceHealth.AntivirusEnabled",
+              "nativeQueryRef": "AntivirusEnabled"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVMode"
+                }
+              },
+              "queryRef": "DeviceHealth.AVMode",
+              "nativeQueryRef": "AVMode"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVEngineRing"
+                }
+              },
+              "queryRef": "DeviceHealth.AVEngineRing",
+              "nativeQueryRef": "AVEngineRing"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVEngineVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.AVEngineVersion",
+              "nativeQueryRef": "AVEngineVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVSignatureRing"
+                }
+              },
+              "queryRef": "DeviceHealth.AVSignatureRing",
+              "nativeQueryRef": "AVSignatureRing"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVSigVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.AVSigVersion",
+              "nativeQueryRef": "AVSigVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "AVSigLastUpdateTime"
+                }
+              },
+              "queryRef": "DeviceHealth.AVSigLastUpdateTime",
+              "nativeQueryRef": "AVSigLastUpdateTime"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "TamperProtection"
+                }
+              },
+              "queryRef": "DeviceHealth.TamperProtection",
+              "nativeQueryRef": "TamperProtection"
             },
             {
               "field": {
@@ -378,11 +616,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "TamperProtection"
+                  "Property": "BehaviorMonitoring"
                 }
               },
-              "queryRef": "DeviceHealth.TamperProtection",
-              "nativeQueryRef": "TamperProtection"
+              "queryRef": "DeviceHealth.BehaviorMonitoring",
+              "nativeQueryRef": "BehaviorMonitoring"
             },
             {
               "field": {
@@ -392,11 +630,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "TrendInstalled"
+                  "Property": "NetworkProtection"
                 }
               },
-              "queryRef": "DeviceHealth.TrendInstalled",
-              "nativeQueryRef": "TrendInstalled"
+              "queryRef": "DeviceHealth.NetworkProtection",
+              "nativeQueryRef": "NetworkProtection"
             },
             {
               "field": {
@@ -406,11 +644,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "TrendProduct"
+                  "Property": "PUAProtection"
                 }
               },
-              "queryRef": "DeviceHealth.TrendProduct",
-              "nativeQueryRef": "TrendProduct"
+              "queryRef": "DeviceHealth.PUAProtection",
+              "nativeQueryRef": "PUAProtection"
             },
             {
               "field": {
@@ -420,11 +658,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OnboardingStatus"
+                  "Property": "EBPFStatus"
                 }
               },
-              "queryRef": "DeviceHealth.OnboardingStatus",
-              "nativeQueryRef": "OnboardingStatus"
+              "queryRef": "DeviceHealth.EBPFStatus",
+              "nativeQueryRef": "EBPFStatus"
             },
             {
               "field": {
@@ -434,11 +672,151 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "LastSeen"
+                  "Property": "OSProduct"
                 }
               },
-              "queryRef": "DeviceHealth.LastSeen",
-              "nativeQueryRef": "LastSeen"
+              "queryRef": "DeviceHealth.OSProduct",
+              "nativeQueryRef": "OSProduct"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSFullVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.OSFullVersion",
+              "nativeQueryRef": "OSFullVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSBuildNumber"
+                }
+              },
+              "queryRef": "DeviceHealth.OSBuildNumber",
+              "nativeQueryRef": "OSBuildNumber"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSPatchUBR"
+                }
+              },
+              "queryRef": "DeviceHealth.OSPatchUBR",
+              "nativeQueryRef": "OSPatchUBR"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSSupportState"
+                }
+              },
+              "queryRef": "DeviceHealth.OSSupportState",
+              "nativeQueryRef": "OSSupportState"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSEolDate"
+                }
+              },
+              "queryRef": "DeviceHealth.OSEolDate",
+              "nativeQueryRef": "OSEolDate"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSPatchCurrency"
+                }
+              },
+              "queryRef": "DeviceHealth.OSPatchCurrency",
+              "nativeQueryRef": "OSPatchCurrency"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSPatchBasis"
+                }
+              },
+              "queryRef": "DeviceHealth.OSPatchBasis",
+              "nativeQueryRef": "OSPatchBasis"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSMonthsBehind"
+                }
+              },
+              "queryRef": "DeviceHealth.OSMonthsBehind",
+              "nativeQueryRef": "OSMonthsBehind"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSFamily"
+                }
+              },
+              "queryRef": "DeviceHealth.OSFamily",
+              "nativeQueryRef": "OSFamily"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRPlatform"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRPlatform",
+              "nativeQueryRef": "EDRPlatform"
             }
           ]
         }

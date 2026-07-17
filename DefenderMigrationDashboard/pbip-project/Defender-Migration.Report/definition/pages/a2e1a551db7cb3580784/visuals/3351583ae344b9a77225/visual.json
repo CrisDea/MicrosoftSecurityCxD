@@ -3,10 +3,10 @@
   "name": "3351583ae344b9a77225",
   "position": {
     "x": 20,
-    "y": 510,
+    "y": 474,
     "z": 3000,
-    "height": 196,
-    "width": 960,
+    "height": 234,
+    "width": 1240,
     "tabOrder": 3000
   },
   "visual": {
@@ -168,11 +168,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSDistribution"
+                  "Property": "DeviceName"
                 }
               },
-              "queryRef": "DeviceHealth.OSDistribution",
-              "nativeQueryRef": "OSDistribution"
+              "queryRef": "DeviceHealth.DeviceName",
+              "nativeQueryRef": "DeviceName"
             },
             {
               "field": {
@@ -182,11 +182,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSBuildVersion"
+                  "Property": "OSProduct"
                 }
               },
-              "queryRef": "DeviceHealth.OSBuildVersion",
-              "nativeQueryRef": "OSBuildVersion"
+              "queryRef": "DeviceHealth.OSProduct",
+              "nativeQueryRef": "OSProduct"
             },
             {
               "field": {
@@ -196,11 +196,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSLatestVer"
+                  "Property": "OSFullVersion"
                 }
               },
-              "queryRef": "DeviceHealth.OSLatestVer",
-              "nativeQueryRef": "OSLatestVer"
+              "queryRef": "DeviceHealth.OSFullVersion",
+              "nativeQueryRef": "OSFullVersion"
             },
             {
               "field": {
@@ -210,11 +210,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "OSUpdated"
+                  "Property": "OSPatchUBR"
                 }
               },
-              "queryRef": "DeviceHealth.OSUpdated",
-              "nativeQueryRef": "OSUpdated"
+              "queryRef": "DeviceHealth.OSPatchUBR",
+              "nativeQueryRef": "OSPatchUBR"
             },
             {
               "field": {
@@ -224,11 +224,95 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "DeviceType"
+                  "Property": "OSSupportState"
                 }
               },
-              "queryRef": "DeviceHealth.DeviceType",
-              "nativeQueryRef": "DeviceType"
+              "queryRef": "DeviceHealth.OSSupportState",
+              "nativeQueryRef": "OSSupportState"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSEolDate"
+                }
+              },
+              "queryRef": "DeviceHealth.OSEolDate",
+              "nativeQueryRef": "OSEolDate"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSPatchCurrency"
+                }
+              },
+              "queryRef": "DeviceHealth.OSPatchCurrency",
+              "nativeQueryRef": "OSPatchCurrency"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OSMonthsBehind"
+                }
+              },
+              "queryRef": "DeviceHealth.OSMonthsBehind",
+              "nativeQueryRef": "OSMonthsBehind"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRVersion"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRVersion",
+              "nativeQueryRef": "EDRVersion"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDRPlatform"
+                }
+              },
+              "queryRef": "DeviceHealth.EDRPlatform",
+              "nativeQueryRef": "EDRPlatform"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "LastSeen"
+                }
+              },
+              "queryRef": "DeviceHealth.LastSeen",
+              "nativeQueryRef": "LastSeen"
             }
           ]
         }
@@ -248,7 +332,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'OS build detail'"
+                  "Value": "'OS currency detail — product, build/UBR, support state, EOL, patch currency, EDR platform, last seen'"
                 }
               }
             },

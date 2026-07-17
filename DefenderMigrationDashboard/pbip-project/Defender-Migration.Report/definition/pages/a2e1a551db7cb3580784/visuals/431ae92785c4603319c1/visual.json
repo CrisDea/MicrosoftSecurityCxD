@@ -3,10 +3,10 @@
   "name": "431ae92785c4603319c1",
   "position": {
     "x": 20,
-    "y": 92,
+    "y": 58,
     "z": 5000,
     "height": 92,
-    "width": 980,
+    "width": 1240,
     "tabOrder": 5000
   },
   "visual": {
@@ -182,11 +182,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Clients"
+                  "Property": "OS Supported"
                 }
               },
-              "queryRef": "DeviceHealth.Clients",
-              "nativeQueryRef": "Clients"
+              "queryRef": "DeviceHealth.OS Supported",
+              "nativeQueryRef": "OS Supported"
             },
             {
               "field": {
@@ -196,11 +196,53 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Servers"
+                  "Property": "OS EOL Imminent"
                 }
               },
-              "queryRef": "DeviceHealth.Servers",
-              "nativeQueryRef": "Servers"
+              "queryRef": "DeviceHealth.OS EOL Imminent",
+              "nativeQueryRef": "OS EOL Imminent"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS Unsupported"
+                }
+              },
+              "queryRef": "DeviceHealth.OS Unsupported",
+              "nativeQueryRef": "OS Unsupported"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "EDR Legacy Platform"
+                }
+              },
+              "queryRef": "DeviceHealth.EDR Legacy Platform",
+              "nativeQueryRef": "EDR Legacy Platform"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "DeviceHealth"
+                    }
+                  },
+                  "Property": "OS Monthly Coverage"
+                }
+              },
+              "queryRef": "DeviceHealth.OS Monthly Coverage",
+              "nativeQueryRef": "OS Monthly Coverage"
             }
           ]
         }
@@ -213,7 +255,7 @@
             "columnCount": {
               "expr": {
                 "Literal": {
-                  "Value": "3L"
+                  "Value": "6L"
                 }
               }
             },

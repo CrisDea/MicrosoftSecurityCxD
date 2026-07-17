@@ -6,6 +6,30 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.07.18.01] — 2026-07-18
+
+### Added
+- **AV update rings on the Device Inventory table.** The AV posture seed (`DeviceAvPosture.kql`) now
+  reads and maps the platform, engine and signature update **rings** (Default / Beta / Preview /
+  Staged / Broad / Delayed) from live Defender AV telemetry. New model columns `AVPlatformRing`,
+  `AVEngineRing`, `AVSignatureRing`.
+- **Device Inventory table rebuilt to the "MDE Major Health Check" (v2.9.5) column contract** — exact
+  column order plus the three rings and the AV signature version, with the new OS-currency columns
+  appended (`OSProduct`, `OSFullVersion`, `OSPatchUBR`, `OSSupportState`, `OSEolDate`,
+  `OSPatchCurrency`, `OSMonthsBehind`, `OSFamily`, `EDRPlatform`).
+- **OS Posture page rebuilt** as a real OS update-currency view: KPI cards (Supported / EOL-imminent /
+  Unsupported / EDR legacy platform / monthly coverage), an **OS lifecycle support** chart, an **OS
+  monthly patch currency** chart (Windows with UBR, fleet-relative), a devices-by-OS-product chart and
+  a detail table (product, build/UBR, support state, EOL date, patch currency, EDR platform, last seen).
+- **Overview page OS-family filter** — restricts the page to Windows / Linux / macOS computers,
+  excluding mobile and other/IoT device families.
+
+### Changed
+- **Full-width page layouts.** Overview, Version Compliance, Non-Compliant, Mobile and OS Posture now
+  fill the page width (eliminating the right-hand dead strip).
+- **Migration Overview** switched to *Fit to page* and re-laid-out to give the migration-status
+  breakdown prominence, with a clean five-chart bottom row.
+
 ## [2026.07.17.01] — 2026-07-17
 
 ### Added

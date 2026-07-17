@@ -126,6 +126,47 @@ table DeviceHealth
 		sourceColumn: EOS
 		formatString: General Date
 
+	column OSProduct
+		dataType: string
+		sourceColumn: OSProduct
+
+	column OSFullVersion
+		dataType: string
+		sourceColumn: OSFullVersion
+
+	column OSBuildNumber
+		dataType: string
+		sourceColumn: OSBuildNumber
+
+	column OSPatchUBR
+		dataType: string
+		sourceColumn: OSPatchUBR
+
+	column OSSupportState
+		dataType: string
+		sourceColumn: OSSupportState
+
+	column OSEolDate
+		dataType: dateTime
+		sourceColumn: OSEolDate
+		formatString: General Date
+
+	column OSPatchCurrency
+		dataType: string
+		sourceColumn: OSPatchCurrency
+
+	column OSPatchBasis
+		dataType: string
+		sourceColumn: OSPatchBasis
+
+	column OSMonthsBehind
+		dataType: int64
+		sourceColumn: OSMonthsBehind
+
+	column OSFamily
+		dataType: string
+		sourceColumn: OSFamily
+
 	column EDRVersion
 		dataType: string
 		sourceColumn: EDRVersion
@@ -137,6 +178,10 @@ table DeviceHealth
 	column EDRUpdate
 		dataType: string
 		sourceColumn: EDRUpdate
+
+	column EDRPlatform
+		dataType: string
+		sourceColumn: EDRPlatform
 
 	column EDRImpairedCommunications
 		dataType: string
@@ -169,6 +214,18 @@ table DeviceHealth
 	column AVSigCompliant
 		dataType: string
 		sourceColumn: AVSigCompliant
+
+	column AVPlatformRing
+		dataType: string
+		sourceColumn: AVPlatformRing
+
+	column AVEngineRing
+		dataType: string
+		sourceColumn: AVEngineRing
+
+	column AVSignatureRing
+		dataType: string
+		sourceColumn: AVSignatureRing
 
 	column SensorCompliant
 		dataType: string
@@ -399,6 +456,38 @@ table DeviceHealth
 
 	measure 'Sensor Needs Attention' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[SensorConnectivity]="WARN" || DeviceHealth[SensorConnectivity]="BAD"))
 		formatString: 0
+
+	measure 'OS Supported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Supported") + 0
+		formatString: 0
+
+	measure 'OS EOL Imminent' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="EOL-imminent") + 0
+		formatString: 0
+
+	measure 'OS Unsupported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Unsupported (EOL)") + 0
+		formatString: 0
+
+	measure 'OS On Latest Patch' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPatchCurrency]="Latest") + 0
+		formatString: 0
+
+	measure 'OS Patch 1-3 Months' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPatchCurrency]="1-3 months behind") + 0
+		formatString: 0
+
+	measure 'OS Patch Over 3 Months' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPatchCurrency]=">3 months behind") + 0
+		formatString: 0
+
+	measure 'OS Monthly Data Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPatchBasis]="Fleet") + 0
+		formatString: 0
+
+	measure 'Onboarded Windows Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OnboardingStatus]="Onboarded", DeviceHealth[OSFamily]="Windows") + 0
+		formatString: 0
+
+	measure 'EDR Legacy Platform' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[EDRPlatform]="Legacy (pre-10.80xx)") + 0
+		formatString: 0
+
+	measure 'EDR Current Platform' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[EDRPlatform]="Current (10.8+)") + 0
+		formatString: 0
+
+	measure 'OS Monthly Coverage' = FORMAT([OS Monthly Data Devices], "0") & " / " & FORMAT([Onboarded Windows Devices], "0")
 
 	measure 'Mobile Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceType]="Mobile") + 0
 		formatString: 0
@@ -647,6 +736,36 @@ table DeviceHealth
 				    OnbO3 = Table.AddColumn(OnbO2, "ov", each VerKey([version])),
 				    OGrp = if Table.RowCount(OnbO3) = 0 then #table({"ok","ogreen"}, {}) else Table.Group(OnbO3, {"ok"}, {{"ogreen", each List.Max([ov])}}),
 				    OGreen = if Table.RowCount(OGrp) = 0 then [] else Record.FromList(OGrp[ogreen], OGrp[ok]),
+				    // ---- fleet-relative monthly OS patch baseline (per osBuild) ------
+				    // MDE Windows sensor agentVersion encodes 10.<sensorBuild>.<osBuild>.<osUBR>;
+				    // the OS revision (UBR) is read live and each device is ranked against the
+				    // newest UBR seen in the tenant for the same build (fleet-relative currency).
+				    UbrOf = (mm) => let av = Text.From(F(mm, "agentVersion", "") ?? ""), pp = Text.Split(av, ".") in if List.Count(pp) >= 4 and pp{0} = "10" then (try Number.FromText(pp{3}) otherwise null) else null,
+				    OnbWin = List.Select(MachActiveList, each F(_, "onboardingStatus", "") = "Onboarded" and Text.StartsWith(Lower(Text.From(F(_, "osPlatform", "") ?? "")), "windows") and UbrOf(_) <> null),
+				    UbrRecs = List.Transform(OnbWin, each [ b = Text.From(F(_, "osBuild", "") ?? ""), u = UbrOf(_) ]),
+				    UbrTab = if List.Count(UbrRecs) = 0 then #table({"b","u"}, {}) else Table.FromRecords(UbrRecs, type table [b = text, u = number]),
+				    UbrGrp = if Table.RowCount(UbrTab) = 0 then #table({"b","ulist"}, {}) else Table.Group(UbrTab, {"b"}, {{"ulist", each List.Sort(List.Distinct([u]), Order.Descending)}}),
+				    UbrLk = if Table.RowCount(UbrGrp) = 0 then [] else Record.FromList(UbrGrp[ulist], UbrGrp[b]),
+				    // ---- authoritative OS lifecycle (osBuild -> end-of-support) ------
+				    // Microsoft Lifecycle / Windows release-health (Enterprise support-end).
+				    // 26100/17763 build collisions disambiguated by server vs client (s/c).
+				    OSLife = {
+				        [b = "7601", eol = #date(2020, 1, 14), lbl = "Windows Server 2008 R2"],
+				        [b = "14393", eol = #date(2027, 1, 12), lbl = "Windows Server 2016"],
+				        [b = "17763", eol = #date(2029, 1, 9), lbl = "Windows Server 2019"],
+				        [b = "17763c", eol = #date(2020, 11, 10), lbl = "Windows 10 1809"],
+				        [b = "20348", eol = #date(2031, 10, 14), lbl = "Windows Server 2022"],
+				        [b = "25398", eol = #date(2025, 10, 24), lbl = "Windows Server 23H2"],
+				        [b = "26100s", eol = #date(2034, 10, 10), lbl = "Windows Server 2025"],
+				        [b = "26100c", eol = #date(2027, 10, 12), lbl = "Windows 11 24H2"],
+				        [b = "22631", eol = #date(2026, 11, 10), lbl = "Windows 11 23H2"],
+				        [b = "22621", eol = #date(2025, 10, 14), lbl = "Windows 11 22H2"],
+				        [b = "22000", eol = #date(2024, 10, 8), lbl = "Windows 11 21H2"],
+				        [b = "19045", eol = #date(2025, 10, 14), lbl = "Windows 10 22H2"],
+				        [b = "19044", eol = #date(2027, 1, 12), lbl = "Windows 10 21H2 LTSC"],
+				        [b = "17134", eol = #date(2019, 11, 12), lbl = "Windows 10 1803"]
+				    },
+				    OSLifeLk = Record.FromList(OSLife, List.Transform(OSLife, each _[b])),
 				    // ---- AV posture seed (advanced hunting, deploy-time) -------------
 				    // AV mode / exact platform+engine+signature versions and their fleet-
 				    // relative currency (GOOD/WARN/BAD per OS build, Win/Linux/mac) are only
@@ -661,6 +780,7 @@ table DeviceHealth
 				    AvLk = if List.Count(AvSeed) = 0 then [] else Record.FromList(AvSeed, List.Transform(AvSeed, each Text.From(Record.FieldOrDefault(_, "DeviceId", "")))),
 				    // ---- per-device projection to the DeviceHealth schema ------------
 				    NowUtc = DateTime.From(DateTimeZone.UtcNow()),
+				    NowDate = Date.From(NowUtc),
 				    Build = (m) =>
 				        let
 				            did = F(m, "id", null),
@@ -702,10 +822,25 @@ table DeviceHealth
 				            health = Text.From(F(m, "healthStatus", "") ?? ""),
 				            hLow = Lower(health),
 				            conn = if not onb then "N/A" else if hLow = "active" then "GOOD" else if Text.Contains(hLow, "impair") then "WARN" else if List.Contains({"inactive","nosensordata","misconfigured"}, hLow) then "BAD" else "WARN",
-				            oGreen = Record.FieldOrDefault(OGreen, osp, null),
-				            ovk = if ver = "" then null else VerKey(ver),
-				            eosPast = eosDate <> null and (try DateTime.From(eosDate) < NowUtc otherwise false),
-				            osUpd = if not onb then "N/A" else if eosPast then "UNSUPPORTED" else if ovk = null or oGreen = null then "N/A" else if ovk >= oGreen then "GOOD" else "WARN",
+				            osBuildNum = Text.From(F(m, "osBuild", "") ?? ""),
+				            avParts = Text.Split(edrVerFull, "."),
+				            ubr = if List.Count(avParts) >= 4 and avParts{0} = "10" then (try Number.FromText(avParts{3}) otherwise null) else null,
+				            osFull = if ubr <> null and osBuildNum <> "" then "10.0." & osBuildNum & "." & Text.From(ubr) else Text.Trim(osp & " " & ver),
+				            ulist = Record.FieldOrDefault(UbrLk, osBuildNum, null),
+				            rank = if ubr = null or ulist = null then null else List.PositionOf(ulist, ubr),
+				            osPatchBasis = if not onb then "N/A" else if ubr = null then "None" else "Fleet",
+				            osPatchCur = if not onb then "N/A" else if ubr = null then "No monthly data" else if rank = null or rank <= 0 then "Latest" else if rank <= 3 then "1-3 months behind" else ">3 months behind",
+				            isServerOs = Text.Contains(oLow, "server"),
+				            lcKey = if osBuildNum = "26100" then (if isServerOs then "26100s" else "26100c") else if osBuildNum = "17763" then (if isServerOs then "17763" else "17763c") else osBuildNum,
+				            lc = Record.FieldOrDefault(OSLifeLk, lcKey, null),
+				            eolDate = if lc = null then null else lc[eol],
+				            osProduct = if lc <> null then lc[lbl] else Text.Trim(osp & " " & ver),
+				            osSupport = if not onb then "N/A" else if eolDate = null then "Unknown" else if eolDate < NowDate then "Unsupported (EOL)" else if eolDate < Date.AddMonths(NowDate, 6) then "EOL-imminent" else "Supported",
+				            osFamily = if isMobile then "Mobile" else if win then "Windows" else if mac then "macOS" else if List.AnyTrue(List.Transform({"linux","ubuntu","debian","red hat","redhat","centos","suse","fedora","oracle","rocky","alma","amazon"}, each Text.Contains(oLow, _))) then "Linux" else "Other",
+				            edrMajor = if List.Count(avParts) >= 1 then (try Number.FromText(avParts{0}) otherwise null) else null,
+				            edrMinor = if List.Count(avParts) >= 2 then (try Number.FromText(avParts{1}) otherwise null) else null,
+				            edrPlatform = if not onb or not win then "N/A" else if edrMajor = null then "N/A" else if edrMajor < 10 or (edrMajor = 10 and edrMinor <> null and edrMinor < 8000) then "Legacy (pre-10.80xx)" else "Current (10.8+)",
+				            osUpd = if not onb then "N/A" else if osSupport = "Unsupported (EOL)" then "UNSUPPORTED" else if osPatchCur = ">3 months behind" then "BAD" else if osPatchCur = "1-3 months behind" or osSupport = "EOL-imminent" then "WARN" else "GOOD",
 				            bad = (x) => x = "BAD" or x = "UNSUPPORTED",
 				            healthy = if not onb then "N/A - not onboarded" else if List.AnyTrue(List.Transform({AVSIG, sensor, RTP, CLOUD, BM, TAMP, NP, IMP, SDC, AVEN, AVREP, conn, osUpd}, bad)) then "Unhealthy" else "Healthy",
 				            grp = let g = F(m, "rbacGroupName", null) in if g = null or g = "" then "Unassigned" else g,
@@ -738,12 +873,13 @@ table DeviceHealth
 				              ThirdPartyEDR = if sw = null then "None" else F(sw, "ThirdPartyEDR", "None"),
 				              DeviceStatus = devStatus, LastSeen = lastSeen,
 				              OSPlatform = osp, OSDistribution = Text.Trim(osp & " " & ver), OSVersionInfo = ver,
-				              OSBuildVersion = ver, OSLatestVer = "", OSUpdated = osUpd, EOS = eosDate,
-				              EDRVersion = edrVer, EDRLatestVersion = edrLatest, EDRUpdate = sensor,
+				              OSBuildVersion = ver, OSLatestVer = "", OSUpdated = osUpd, EOS = eosDate, OSProduct = osProduct, OSFullVersion = osFull, OSBuildNumber = osBuildNum, OSPatchUBR = if ubr = null then "" else Text.From(ubr), OSSupportState = osSupport, OSEolDate = eolDate, OSPatchCurrency = osPatchCur, OSPatchBasis = osPatchBasis, OSMonthsBehind = rank, OSFamily = osFamily,
+				              EDRVersion = edrVer, EDRLatestVersion = edrLatest, EDRUpdate = sensor, EDRPlatform = edrPlatform,
 				              EDRImpairedCommunications = IMP, EDRSensorDataCollection = SDC,
 				              AVProductVersion = avf("AVProductVersion") ?? "N/A", AVPlatformCompliant = avf("AVPlatformCompliant") ?? "N/A", AVEngineVersion = avf("AVEngineVersion") ?? "N/A", AVEngineCompliant = avf("AVEngineCompliant") ?? "N/A",
 				              AVSigVersion = avf("AVSigVersion") ?? "N/A", AVSigCompliant = avf("AVSigCompliant") ?? AVSIG, SensorCompliant = sensor, AVSigLastUpdateTime = avf("AVSigLastUpdateTime"),
 				              AVMode = avf("AVMode") ?? "N/A", AntivirusEnabled = AVEN, AntivirusReporting = AVREP,
+				              AVPlatformRing = avf("AVPlatformRing") ?? "N/A", AVEngineRing = avf("AVEngineRing") ?? "N/A", AVSignatureRing = avf("AVSignatureRing") ?? "N/A",
 				              RealtimeProtection = RTP, CloudProtection = CLOUD, BehaviorMonitoring = BM,
 				              NetworkProtection = NP, PUAProtection = PUA, TamperProtection = TAMP, EBPFStatus = avf("EBPFStatus") ?? "N/A",
 				              MobileMgmt = if isMobile then (if managedBy = "Intune" then "MDM (Intune)" else if managedBy = "Unmanaged" then "Unmanaged" else "Unknown") else "N/A",
@@ -751,9 +887,9 @@ table DeviceHealth
 				              AppCompliant = if isMobile then sensor else "N/A", WebProtection = if isMobile then "Unknown" else "N/A",
 				              Healthy = healthy, SensorConnectivity = conn ],
 				    Rows = List.Transform(MachActiveList, Build),
-				    AsTable = Table.FromRecords(Rows, {"DeviceId", "DeviceName", "DeviceType", "MachineGroup", "DupDeviceId", "DeviceTags", "CloudPlatforms", "CloudLocation", "ADDomain", "IsVDI", "ManagedBy", "ManagementMethods", "OnboardingStatus", "SensorHealthState", "ConnectivityType", "ExposureLevel", "MigrationStatus", "TrendInstalled", "TrendProduct", "ThirdPartyAV", "ThirdPartyEDR", "DeviceStatus", "LastSeen", "OSPlatform", "OSDistribution", "OSVersionInfo", "OSBuildVersion", "OSLatestVer", "OSUpdated", "EOS", "EDRVersion", "EDRLatestVersion", "EDRUpdate", "EDRImpairedCommunications", "EDRSensorDataCollection", "AVProductVersion", "AVPlatformCompliant", "AVEngineVersion", "AVEngineCompliant", "AVSigVersion", "AVSigCompliant", "SensorCompliant", "AVSigLastUpdateTime", "AVMode", "AntivirusEnabled", "AntivirusReporting", "RealtimeProtection", "CloudProtection", "BehaviorMonitoring", "NetworkProtection", "PUAProtection", "TamperProtection", "EBPFStatus", "MobileMgmt", "EnrollmentProfile", "DefenderAppVersion", "AppCompliant", "WebProtection", "Healthy", "SensorConnectivity"}, MissingField.UseNull),
+				    AsTable = Table.FromRecords(Rows, {"DeviceId", "DeviceName", "DeviceType", "MachineGroup", "DupDeviceId", "DeviceTags", "CloudPlatforms", "CloudLocation", "ADDomain", "IsVDI", "ManagedBy", "ManagementMethods", "OnboardingStatus", "SensorHealthState", "ConnectivityType", "ExposureLevel", "MigrationStatus", "TrendInstalled", "TrendProduct", "ThirdPartyAV", "ThirdPartyEDR", "DeviceStatus", "LastSeen", "OSPlatform", "OSDistribution", "OSVersionInfo", "OSBuildVersion", "OSLatestVer", "OSUpdated", "EOS", "OSProduct", "OSFullVersion", "OSBuildNumber", "OSPatchUBR", "OSSupportState", "OSEolDate", "OSPatchCurrency", "OSPatchBasis", "OSMonthsBehind", "OSFamily", "EDRVersion", "EDRLatestVersion", "EDRUpdate", "EDRPlatform", "EDRImpairedCommunications", "EDRSensorDataCollection", "AVProductVersion", "AVPlatformCompliant", "AVEngineVersion", "AVEngineCompliant", "AVSigVersion", "AVSigCompliant", "SensorCompliant", "AVSigLastUpdateTime", "AVMode", "AVPlatformRing", "AVEngineRing", "AVSignatureRing", "AntivirusEnabled", "AntivirusReporting", "RealtimeProtection", "CloudProtection", "BehaviorMonitoring", "NetworkProtection", "PUAProtection", "TamperProtection", "EBPFStatus", "MobileMgmt", "EnrollmentProfile", "DefenderAppVersion", "AppCompliant", "WebProtection", "Healthy", "SensorConnectivity"}, MissingField.UseNull),
 				    WithTrendPresent = Table.AddColumn(AsTable, "TrendAgentPresent", each if [TrendInstalled] = "Yes" then 1 else 0, Int64.Type),
 				    Dated = Table.TransformColumns(WithTrendPresent, {{"LastSeen", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"EOS", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"AVSigLastUpdateTime", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}}),
-				    Typed = Table.TransformColumnTypes(Dated, {{"TrendAgentPresent", Int64.Type}})
+				    Typed = Table.TransformColumnTypes(Dated, {{"TrendAgentPresent", Int64.Type}, {"OSMonthsBehind", Int64.Type}, {"OSEolDate", type date}})
 				in
 				    Typed

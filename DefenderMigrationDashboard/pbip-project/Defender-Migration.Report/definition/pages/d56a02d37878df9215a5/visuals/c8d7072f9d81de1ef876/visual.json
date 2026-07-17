@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "c8d7072f9d81de1ef876",
   "position": {
-    "x": 330,
+    "x": 411,
     "y": 534,
     "z": 3850,
     "height": 172,
-    "width": 300,
+    "width": 378,
     "tabOrder": 3850
   },
   "visual": {
@@ -211,7 +211,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Onboarded \u2014 Android vs iOS'"
+                  "Value": "'Onboarded — Android vs iOS'"
                 }
               }
             },
