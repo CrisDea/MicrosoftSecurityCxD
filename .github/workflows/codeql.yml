@@ -1,0 +1,52 @@
+# CodeQL static analysis (SAST).
+# This repository is PowerShell + Power BI (PBIP) tooling; CodeQL's traditional
+# compiled/scripting languages do not apply, but CodeQL analyses the repository's
+# GitHub Actions workflows (language: actions), providing real SAST coverage of
+# the CI supply chain and satisfying the OpenSSF Scorecard SAST check.
+# Docs: https://github.com/github/codeql-action
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Saturday 02:30 UTC.
+    - cron: '30 2 * * 6'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # Needed to upload CodeQL results to the Code Scanning dashboard.
+      security-events: write
+      packages: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: '/language:${{ matrix.language }}'
