@@ -6,6 +6,24 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.07.18.02] — 2026-07-18
+
+### Added
+- **Update-in-place with a version preflight built into `Deploy-Dashboard.ps1`.** Every deploy now
+  first compares three versions — the **local** content (the KPI Guide version marker), the latest
+  released on **GitHub** (top of `CHANGELOG.md`, fetched over an unauthenticated raw URL), and what
+  is **live in the workspace** — and only republishes when the workspace is behind.
+  - The live version is read from the semantic-model item's **description** via a read-only Fabric
+    `GET item` call, so an update check needs only `Item.Read.All` / workspace **Viewer** — the
+    least privilege possible. The version is stamped onto that description after each successful
+    publish.
+  - New switches: **`-CheckVersionOnly`** (read-only; report versions and whether an update is
+    available, then exit), **`-Force`** (deploy even when already current — e.g. to refresh live
+    data or re-seed trend/AV tables), **`-SkipVersionCheck`** (offline/air-gapped), and
+    **`-SkipGitHubCheck`** (also `skipGitHubVersionCheck` / `githubRawChangelogUrl` in config.json).
+  - A `git pull` reminder is printed when the local clone is behind GitHub, and a rollback guard
+    blocks (without `-Force`) when the workspace is newer than the local content.
+
 ## [2026.07.18.01] — 2026-07-18
 
 ### Added

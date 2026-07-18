@@ -11,5 +11,7 @@
   "removedAfterDays": 0,
   "graphTenantId": "<optional-separate-defender-app-tenant-guid>",
   "graphClientId": "<optional-separate-defender-app-client-guid>",
-  "graphClientSecret": "<optional-separate-defender-app-secret>"
+  "graphClientSecret": "<optional-separate-defender-app-secret>",
+  "skipGitHubVersionCheck": false,
+  "githubRawChangelogUrl": "<optional-raw-CHANGELOG.md-url-for-a-fork-default-derives-from-the-git-remote>"
 }

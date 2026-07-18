@@ -74,6 +74,24 @@
 .PARAMETER Wait
     Poll the dataset refresh until it reaches a terminal state (Completed/Failed) before exiting.
 
+.PARAMETER Force
+    Deploy even when the version check finds the workspace is already at (or newer than) the local
+    version. Use it to refresh live data or re-seed the trend/AV/Trend-migration tables without a
+    version bump.
+
+.PARAMETER SkipVersionCheck
+    Skip the local-vs-GitHub-vs-workspace version comparison entirely (offline/air-gapped runs).
+    The post-publish version stamp is also skipped.
+
+.PARAMETER CheckVersionOnly
+    Read-only mode: report the local, GitHub and live workspace versions, say whether an update is
+    available, then exit WITHOUT deploying. This needs only workspace read access (Item.Read.All /
+    Viewer), so a low-privilege identity can check for updates without any deploy rights.
+
+.PARAMETER SkipGitHubCheck
+    Skip only the GitHub raw-CHANGELOG lookup (still compares local vs the live workspace). Can also
+    be set as "skipGitHubVersionCheck" in config.json.
+
 .PARAMETER ConfigPath
     Path to a config.json (written by Bootstrap-Deployment.ps1) supplying tenantId/clientId/
     clientSecret and optionally workspaceId/capacityId. Enables service-principal auth.
@@ -119,6 +137,10 @@
 .EXAMPLE
     .\Deploy-Dashboard.ps1 -ConfigPath .\config.json -WorkspaceId <guid>
 
+.EXAMPLE
+    # Read-only: is a newer version available in GitHub/local than what is live? (least privilege)
+    .\Deploy-Dashboard.ps1 -ConfigPath .\config.json -WorkspaceId <guid> -CheckVersionOnly
+
 .NOTES
     Licensed under the MIT License. Provided as-is, without warranty. Try it in a test
     workspace before using it in production.
@@ -138,6 +160,10 @@ param(
     [string[]]$RefreshTimes,
     [string]$RefreshTimeZone = "UTC",
     [switch]$Wait,
+    [switch]$Force,
+    [switch]$SkipVersionCheck,
+    [switch]$CheckVersionOnly,
+    [switch]$SkipGitHubCheck,
     [string]$ConfigPath,
     [string]$ClientId,
     [string]$ClientSecret,
@@ -187,6 +213,7 @@ try {
     Test-Prereqs -ProjectPath $ProjectPath
     $modelDir  = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.SemanticModel" | Select-Object -First 1).FullName
     $reportDir = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.Report"        | Select-Object -First 1).FullName
+    $dashRoot  = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
     # ---- sign in ------------------------------------------------------------
     Ensure-SignedIn -TenantId $TenantId
@@ -222,6 +249,36 @@ try {
     $WorkspaceName = $wsObj.displayName
     Write-Ok "Using workspace '$WorkspaceName' ($WorkspaceId) on capacity $($wsObj.capacityId)"
 
+    # ---- version preflight: compare local / GitHub / live, then decide ------
+    # Read-only check (GET items + GET item description) - the least-privileged way to learn what is
+    # already live. Gates the in-place update so we only republish when the workspace is behind.
+    $verInfo = $null
+    if (-not $SkipVersionCheck) {
+        $skipGh = [bool]$SkipGitHubCheck
+        if ($cfg.ContainsKey('skipGitHubVersionCheck') -and [bool]$cfg.skipGitHubVersionCheck) { $skipGh = $true }
+        $verInfo = Invoke-VersionPreflight -WsId $WorkspaceId -ModelName $ModelName -ReportDir $reportDir -DashboardRoot $dashRoot -Cfg $cfg -SkipGitHubCheck:$skipGh
+
+        if ($CheckVersionOnly) {
+            Write-Host ""
+            if ($verInfo.IsCurrent)      { Write-Ok  "Workspace is already at the latest version (v$($verInfo.Deployed)). No update needed." }
+            elseif ($verInfo.Deployed)   { Write-Warn2 "Update available: workspace v$($verInfo.Deployed) -> local v$($verInfo.Local). Re-run without -CheckVersionOnly to update in place." }
+            elseif ($verInfo.ItemId)     { Write-Warn2 "A dashboard is deployed but carries no version stamp (deployed before version tracking). Re-run without -CheckVersionOnly to update it to v$($verInfo.Local) and stamp it." }
+            else                          { Write-Warn2 "No dashboard is deployed in this workspace yet. Re-run without -CheckVersionOnly to deploy v$($verInfo.Local)." }
+            Write-Host "Version check complete (read-only, no changes made)." -ForegroundColor Green
+            exit 0
+        }
+
+        if ($verInfo.IsCurrent -and -not $Force) {
+            Write-Host ""
+            Write-Ok "Workspace is already at the latest version (v$($verInfo.Deployed)) - nothing to update."
+            Write-Ok "Re-run with -Force to redeploy anyway (e.g. to refresh live data or re-seed the trend / AV / Trend-migration tables)."
+            exit 0
+        }
+        if ($verInfo.WorkspaceAhead -and -not $Force) {
+            throw "The workspace (v$($verInfo.Deployed)) is NEWER than your local content (v$($verInfo.Local)). Run 'git pull' to update your clone, or pass -Force to overwrite the workspace with the older local content."
+        }
+    }
+
     # ---- publish the semantic model -----------------------------------------
     Write-Step "Publishing semantic model '$ModelName'"
     $isLive = Test-LiveModel -ModelDir $modelDir
@@ -242,6 +299,13 @@ try {
     if ($isLive) { Write-Ok "Live model: DeviceHealth binds to Defender via a Service Principal; trend history + AV posture materialised at deploy" }
     $modelId = Publish-Item -WsId $WorkspaceId -Type "SemanticModel" -DisplayName $ModelName -Parts (Get-Parts $modelDir $overrides)
     Write-Ok "Semantic model id: $modelId"
+
+    # Stamp the deployed version onto the model item description so future runs (and read-only
+    # checkers) can compare workspace-vs-local without opening the report.
+    if (-not $SkipVersionCheck) {
+        $stampVer = if ($verInfo) { $verInfo.Local } else { Get-LocalDashboardVersion -ReportDir $reportDir -DashboardRoot $dashRoot }
+        if ($stampVer) { Set-DeployedVersion -WsId $WorkspaceId -ItemId $modelId -Version $stampVer -BaseName $ModelName }
+    }
 
     # ---- publish the report, bound to the model by connection ---------------
     Write-Step "Publishing report '$ReportName'"

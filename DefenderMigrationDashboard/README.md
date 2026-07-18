@@ -218,6 +218,38 @@ number within that day — it starts at `01`, increments for each release the sa
 `01` at midnight (for example `2026.07.17.01`). The current version is shown on the **KPI Guide** page
 and heads each entry in [`CHANGELOG.md`](CHANGELOG.md).
 
+### Checking and updating in place
+
+`Deploy-Dashboard.ps1` runs a **version preflight** before every publish. It compares three versions
+and only republishes when the workspace is behind, so re-running the script is a safe no-op when you
+are already current:
+
+| Source | Where it comes from |
+| --- | --- |
+| **Local content** | the `Version` marker on the KPI Guide page of the report you are about to deploy |
+| **GitHub latest** | the top entry of `CHANGELOG.md` on the tracked branch, fetched over an unauthenticated raw URL (no GitHub credentials) |
+| **Workspace (live)** | the version stamped on the semantic-model item's **description**, read with a single read-only Fabric `GET item` call |
+
+```powershell
+# Read-only: is a newer version available than what is live? (needs only Viewer / Item.Read.All)
+.\Deploy-Dashboard.ps1 -ConfigPath .\config.json -WorkspaceId <guid> -CheckVersionOnly
+
+# Normal run: updates in place only if the workspace is behind; no-op if already current
+.\Deploy-Dashboard.ps1 -ConfigPath .\config.json -WorkspaceId <guid>
+
+# Force a redeploy even when current (refresh live data / re-seed trend + AV tables)
+.\Deploy-Dashboard.ps1 -ConfigPath .\config.json -WorkspaceId <guid> -Force
+```
+
+**Least privilege.** The update check reads the live version from the item description — a Fabric
+`GET item` — so a plain workspace **Viewer** (`Item.Read.All`) can check for updates without any
+deploy rights. Publishing the update still requires workspace **Contributor** (or Member). The
+version is stamped onto the model description automatically after each successful publish.
+
+Other switches: `-SkipVersionCheck` (offline/air-gapped runs), `-SkipGitHubCheck` (compare local vs
+live only). In `config.json` you can set `"skipGitHubVersionCheck": true` or point at a fork with
+`"githubRawChangelogUrl": "https://raw.githubusercontent.com/<owner>/<repo>/<branch>/DefenderMigrationDashboard/CHANGELOG.md"`.
+
 ## Trend Micro migration mapping
 
 The **Trend Migration** page answers "which of the devices in my Trend Micro estate are now in

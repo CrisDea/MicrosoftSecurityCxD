@@ -232,6 +232,191 @@ function Ensure-SignedIn {
     $script:TokenCache = @{}   # ensure fresh tokens for the (possibly new) session
 }
 
+# --------------------------------------------------------------------- version / update-in-place
+function Get-VersionFromText {
+    <# Extracts a YYYY.MM.DD.XX calendar version from arbitrary text. Returns $null if none found. #>
+    param([string]$Text)
+    if (-not $Text) { return $null }
+    $m = [regex]::Match($Text, '(\d{4}\.\d{2}\.\d{2}\.\d{2})')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return $null
+}
+
+function Get-ChangelogVersion {
+    <# Top (most recent) entry in CHANGELOG.md, e.g. '## [2026.07.18.01]'. Returns $null if absent. #>
+    param([string]$DashboardRoot)
+    if (-not $DashboardRoot) { return $null }
+    $cl = Join-Path $DashboardRoot "CHANGELOG.md"
+    if (-not (Test-Path -LiteralPath $cl)) { return $null }
+    $hit = Select-String -LiteralPath $cl -Pattern '^\s*##\s*\[(\d{4}\.\d{2}\.\d{2}\.\d{2})\]' | Select-Object -First 1
+    if ($hit) { return $hit.Matches[0].Groups[1].Value }
+    return (Get-VersionFromText (((Get-Content -LiteralPath $cl -TotalCount 40) -join "`n")))
+}
+
+function Get-LocalDashboardVersion {
+    <# The version users actually see is the 'Version YYYY.MM.DD.XX' marker on the KPI Guide page of
+       the report - the definitive version of the *content* being deployed. Scans the report
+       definition for that marker; falls back to the top CHANGELOG entry. Never throws: a missing
+       marker must not block a deploy. #>
+    param([string]$ReportDir, [string]$DashboardRoot)
+    $ver = $null
+    try {
+        $visuals = Get-ChildItem -LiteralPath $ReportDir -Recurse -Filter "visual.json" -ErrorAction SilentlyContinue
+        foreach ($v in $visuals) {
+            $t = Get-Content -LiteralPath $v.FullName -Raw -ErrorAction SilentlyContinue
+            $m = [regex]::Match($t, 'Version\s+(\d{4}\.\d{2}\.\d{2}\.\d{2})')
+            if ($m.Success) { $ver = $m.Groups[1].Value; break }
+        }
+    } catch {}
+    if (-not $ver) { $ver = Get-ChangelogVersion -DashboardRoot $DashboardRoot }
+    return $ver
+}
+
+function Compare-AppVersion {
+    <# -1 if A<B, 0 if equal, 1 if A>B. A null/empty version sorts lowest. Compares the four numeric
+       YYYY.MM.DD.XX segments; falls back to a case-insensitive string compare for odd values. #>
+    param([string]$A, [string]$B)
+    if (-not $A -and -not $B) { return 0 }
+    if (-not $A) { return -1 }
+    if (-not $B) { return 1 }
+    $ra = [regex]::Match($A, '^(\d{4})\.(\d{2})\.(\d{2})\.(\d{2})$')
+    $rb = [regex]::Match($B, '^(\d{4})\.(\d{2})\.(\d{2})\.(\d{2})$')
+    if ($ra.Success -and $rb.Success) {
+        for ($i = 1; $i -le 4; $i++) {
+            $x = [int]$ra.Groups[$i].Value; $y = [int]$rb.Groups[$i].Value
+            if ($x -lt $y) { return -1 }
+            if ($x -gt $y) { return 1 }
+        }
+        return 0
+    }
+    return [string]::Compare($A, $B, $true)
+}
+
+function Get-DeployedVersion {
+    <# Reads the version stamped on the semantic-model item's description in the workspace. This is a
+       read-only Fabric call (GET item) - the least-privileged way to learn what is live, so a plain
+       Viewer / Item.Read.All identity can run the check with no deploy rights. Returns $null when
+       the item does not exist yet (first deploy) or carries no version stamp. #>
+    param([string]$WsId, [string]$ItemId)
+    if (-not $ItemId) { return $null }
+    $item = Invoke-Http -Method GET -Url "$script:FabricBase/workspaces/$WsId/items/$ItemId" -AllowNotFound
+    if (-not $item) { return $null }
+    $desc = $null
+    if ($item.PSObject.Properties['description']) { $desc = $item.description }
+    return (Get-VersionFromText $desc)
+}
+
+function Set-DeployedVersion {
+    <# Stamps the deployed version onto the semantic-model item's description so the next run (or a
+       read-only checker) can compare against it. Best-effort: a failure here must not fail an
+       otherwise-successful deploy. #>
+    param([string]$WsId, [string]$ItemId, [string]$Version, [string]$BaseName)
+    if (-not $ItemId -or -not $Version) { return }
+    $desc = "$BaseName - deployed version v$Version"
+    if ($desc.Length -gt 256) { $desc = $desc.Substring(0, 256) }
+    try {
+        Invoke-Http -Method PATCH -Url "$script:FabricBase/workspaces/$WsId/items/$ItemId" -Body @{ description = $desc } | Out-Null
+        Write-Ok "Stamped workspace version marker: v$Version"
+    } catch {
+        Write-Warn2 "Could not stamp the version marker (deploy still succeeded): $($_.Exception.Message)"
+    }
+}
+
+function Get-GitHubVersion {
+    <# Best-effort read of the latest released version from GitHub (top CHANGELOG entry on the tracked
+       branch). Unauthenticated public raw fetch - needs no GitHub credentials. Resolves the raw URL
+       from config (githubRawChangelogUrl), else the local git remote+branch, else a built-in
+       default. Returns $null (with a warning) when offline or unresolved. #>
+    param([string]$DashboardRoot, [hashtable]$Cfg)
+    $url = $null
+    if ($Cfg -and $Cfg.ContainsKey('githubRawChangelogUrl') -and $Cfg.githubRawChangelogUrl) {
+        $url = [string]$Cfg.githubRawChangelogUrl
+    }
+    if (-not $url -and $DashboardRoot) {
+        try {
+            $remote = (& git -C $DashboardRoot remote get-url origin 2>$null)
+            $branch = (& git -C $DashboardRoot rev-parse --abbrev-ref HEAD 2>$null)
+            if ($remote) {
+                $mm = [regex]::Match($remote, 'github\.com[:/]+([^/]+)/([^/.]+)')
+                if ($mm.Success) {
+                    $owner = $mm.Groups[1].Value; $repo = $mm.Groups[2].Value
+                    if (-not $branch -or $branch -eq 'HEAD') { $branch = 'main' }
+                    $url = "https://raw.githubusercontent.com/$owner/$repo/$branch/DefenderMigrationDashboard/CHANGELOG.md"
+                }
+            }
+        } catch {}
+    }
+    if (-not $url) { $url = "https://raw.githubusercontent.com/CrisDea/MicrosoftSecurityCxD/main/DefenderMigrationDashboard/CHANGELOG.md" }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+    $content = $null
+    for ($attempt = 1; $attempt -le 2 -and -not $content; $attempt++) {
+        try {
+            $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            $content = $resp.Content
+        } catch {
+            if ($attempt -ge 2) {
+                Write-Warn2 "Could not read the GitHub version ($url): $($_.Exception.Message). Skipping the GitHub comparison."
+                return $null
+            }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $m = [regex]::Match($content, '##\s*\[(\d{4}\.\d{2}\.\d{2}\.\d{2})\]')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return (Get-VersionFromText $content)
+}
+
+function Invoke-VersionPreflight {
+    <# Compares the version of the content about to be deployed (local), the latest released on GitHub,
+       and what is currently live in the workspace, prints a summary and returns a decision object.
+       Performs only read calls - safe for a read-only identity. #>
+    param(
+        [string]$WsId, [string]$ModelName, [string]$ReportDir, [string]$DashboardRoot,
+        [hashtable]$Cfg, [switch]$SkipGitHubCheck
+    )
+    Write-Step "Version check (local vs GitHub vs workspace)"
+
+    $local     = Get-LocalDashboardVersion -ReportDir $ReportDir -DashboardRoot $DashboardRoot
+    $changelog = Get-ChangelogVersion -DashboardRoot $DashboardRoot
+    if ($local -and $changelog -and (Compare-AppVersion $local $changelog) -ne 0) {
+        Write-Warn2 "Report marker (v$local) and CHANGELOG (v$changelog) disagree - update both to keep versioning consistent."
+    }
+
+    $github = $null
+    if (-not $SkipGitHubCheck) { $github = Get-GitHubVersion -DashboardRoot $DashboardRoot -Cfg $Cfg }
+
+    $existing = Find-Item -WsId $WsId -Type "SemanticModel" -DisplayName $ModelName
+    $itemId = $null; if ($existing) { $itemId = $existing.id }
+    $deployed = Get-DeployedVersion -WsId $WsId -ItemId $itemId
+
+    $fmt = { param($v) if ($v) { "v$v" } else { "(none)" } }
+    Write-Host ("    {0,-20} {1}" -f "Local content:",   (& $fmt $local))
+    Write-Host ("    {0,-20} {1}" -f "GitHub latest:",   (& $fmt $github))
+    Write-Host ("    {0,-20} {1}" -f "Workspace (live):",(& $fmt $deployed))
+
+    $localBehindGitHub = ($local -and $github -and (Compare-AppVersion $local $github) -lt 0)
+    if ($localBehindGitHub) {
+        Write-Warn2 "Your local content (v$local) is BEHIND GitHub (v$github). Run 'git pull' to get the latest release before deploying."
+    }
+    $cmp = Compare-AppVersion $deployed $local
+    $isCurrent     = ($deployed -and $cmp -eq 0)
+    $workspaceAhead= ($cmp -gt 0)
+    if ($workspaceAhead) {
+        Write-Warn2 "The workspace (v$deployed) is NEWER than your local content (v$local). Deploying would roll it back."
+    }
+
+    return [pscustomobject]@{
+        Local             = $local
+        GitHub            = $github
+        Deployed          = $deployed
+        ItemId            = $itemId
+        IsCurrent         = $isCurrent
+        NeedsUpdate       = (-not $isCurrent)
+        LocalBehindGitHub = $localBehindGitHub
+        WorkspaceAhead    = $workspaceAhead
+    }
+}
+
 # --------------------------------------------------------------------- workspaces / capacities
 function Get-WorkspaceById([string]$WsId) {
     return (Invoke-Http -Method GET -Url "$script:FabricBase/workspaces/$WsId" -AllowNotFound)
