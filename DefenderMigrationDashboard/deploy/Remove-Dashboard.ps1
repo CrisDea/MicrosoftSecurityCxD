@@ -38,7 +38,7 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$WorkspaceId,
+    [string]$WorkspaceId,
     [string]$ModelName  = "Defender Migration",
     [string]$ReportName = "Defender Migration",
     [switch]$RemoveWorkspace,
@@ -72,6 +72,9 @@ try {
     }
     Initialize-Auth -ClientId $ClientId -ClientSecret $ClientSecret -TenantId $TenantId
     Test-Prereqs
+    if (-not $WorkspaceId) {
+        throw "No workspace specified. Pass -WorkspaceId <guid>, or supply it via -ConfigPath config.json (workspaceId)."
+    }
     Ensure-SignedIn -TenantId $TenantId
 
     $ws = Get-WorkspaceById $WorkspaceId
@@ -82,20 +85,47 @@ try {
         Write-Warn2 "Cancelled by user."; exit 0
     }
 
+    # Remove the report first, then the model, but keep going if one step fails so a partial
+    # teardown never blocks the rest. Each removal is retried a couple of times on transient errors.
+    $failures = 0
+    function Remove-WithRetry([string]$Type, [string]$Name) {
+        for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try { Remove-ItemFabric -WsId $WorkspaceId -Type $Type -DisplayName $Name | Out-Null; return $true }
+            catch {
+                if ($attempt -lt 3) {
+                    Write-Warn2 "Could not remove $Type '$Name' (attempt $attempt/3): $($_.Exception.Message). Retrying..."
+                    Start-Sleep -Seconds ([int][Math]::Min(15, [Math]::Pow(2, $attempt)))
+                } else {
+                    Write-Err "Failed to remove $Type '$Name' after 3 attempts: $($_.Exception.Message)"
+                    return $false
+                }
+            }
+        }
+        return $false
+    }
+
     Write-Step "Removing report"
-    Remove-ItemFabric -WsId $WorkspaceId -Type "Report" -DisplayName $ReportName | Out-Null
+    if (-not (Remove-WithRetry -Type "Report" -Name $ReportName)) { $failures++ }
 
     Write-Step "Removing semantic model"
-    Remove-ItemFabric -WsId $WorkspaceId -Type "SemanticModel" -DisplayName $ModelName | Out-Null
+    if (-not (Remove-WithRetry -Type "SemanticModel" -Name $ModelName)) { $failures++ }
 
     if ($RemoveWorkspace) {
         if (-not $Force) { throw "Refusing to delete the workspace without -Force. Re-run with -RemoveWorkspace -Force." }
-        Write-Step "Deleting workspace '$($ws.displayName)'"
-        Invoke-Http -Method DELETE -Url "$script:FabricBase/workspaces/$WorkspaceId" -AllowNotFound | Out-Null
-        Write-Ok "Workspace deleted."
+        if ($failures -gt 0) {
+            Write-Warn2 "Skipping workspace deletion because $failures item(s) could not be removed. Resolve those first, then re-run with -RemoveWorkspace -Force."
+        } else {
+            Write-Step "Deleting workspace '$($ws.displayName)'"
+            try { Invoke-Http -Method DELETE -Url "$script:FabricBase/workspaces/$WorkspaceId" -AllowNotFound | Out-Null; Write-Ok "Workspace deleted." }
+            catch { Write-Err "Failed to delete workspace: $($_.Exception.Message)"; $failures++ }
+        }
     }
 
     Write-Host ""
+    if ($failures -gt 0) {
+        Write-Warn2 "Cleanup finished with $failures problem(s). It is safe to re-run this script to retry the remaining item(s)."
+        exit 1
+    }
     Write-Host "Cleanup complete." -ForegroundColor Green
 }
 catch {

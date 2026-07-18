@@ -5,6 +5,32 @@ All notable changes to the Defender Migration Dashboard are documented here. The
 versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number within that day (starting
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
+
+## [2026.07.18.03] — 2026-07-18
+
+### Added
+- **Guided interactive wizard.** Running `Deploy-Dashboard.ps1` with no parameters now starts a
+  step-by-step wizard (config path, action menu, workspace selection, Trend-CSV import, force,
+  confirmation) so the script is usable without memorising switches. Any explicitly supplied
+  parameter skips the wizard.
+- **GitHub self-heal for missing or corrupt local content.** Preflight now runs a deep
+  `Test-ProjectIntegrity` check (model/report TMDL, seed placeholders, `definition.pbir`, ≥1 report
+  page, non-empty KQL assets). When content is missing or invalid it automatically re-downloads the
+  `DefenderMigrationDashboard` folder from GitHub and re-validates. The restore is EOL-insensitive and
+  selective — only genuinely missing/different files are replaced, so it never causes CRLF/LF churn.
+  Suppress with **`-SkipGitHubRestore`** (or `skipGitHubRestore` in config.json).
+- **Ingested-data preservation across updates.** The previously imported **Trend device list** is now
+  reused automatically when a deploy runs without `-TrendCsv` (instead of being emptied), and the
+  **DeploymentTrend history** accumulates across deploys (beyond the 30-day query window) so trend
+  charts keep their history. Both stores are **backed up** (timestamped, last 15 kept) before every
+  overwrite, and the last-known history is re-pushed if a live hunting query transiently returns zero
+  rows.
+
+### Changed
+- **More resilient uninstall (`Remove-Dashboard.ps1`).** Item removals now retry transient failures
+  (3 attempts, backoff), missing items are skipped cleanly, a partial teardown never blocks the rest,
+  workspace deletion is skipped when any item failed, and the script exits with a clear summary/exit
+  code so it is safe to re-run. `-WorkspaceId` is now optional when supplied via `-ConfigPath`.
 
 ## [2026.07.18.02] — 2026-07-18
 

@@ -164,6 +164,7 @@ param(
     [switch]$SkipVersionCheck,
     [switch]$CheckVersionOnly,
     [switch]$SkipGitHubCheck,
+    [switch]$SkipGitHubRestore,
     [string]$ConfigPath,
     [string]$ClientId,
     [string]$ClientSecret,
@@ -179,6 +180,18 @@ $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_Common.ps1"
 
 try {
+    # ---- guided mode when launched with no parameters -----------------------
+    # A first-time user can just run the script; we ask a few questions and fill the parameters.
+    if ($PSBoundParameters.Count -eq 0 -and [Environment]::UserInteractive) {
+        $wz = Start-DeployWizard -ScriptRoot $PSScriptRoot
+        if ($wz.ConfigPath)       { $ConfigPath       = $wz.ConfigPath }
+        if ($wz.WorkspaceId)      { $WorkspaceId      = $wz.WorkspaceId }
+        if ($wz.TrendCsv)         { $TrendCsv         = $wz.TrendCsv }
+        if ($wz.CheckVersionOnly) { $CheckVersionOnly = $true }
+        if ($wz.Force)            { $Force            = $true }
+        if ($wz.SelectWorkspace)  { $SelectWorkspace  = $true }
+    }
+
     # ---- config + auth mode -------------------------------------------------
     $cfg = @{}
     if ($ConfigPath) {
@@ -210,7 +223,10 @@ try {
     # ---- resolve project ----------------------------------------------------
     if (-not $ProjectPath) { $ProjectPath = Join-Path $PSScriptRoot "..\pbip-project" }
     $ProjectPath = (Resolve-Path $ProjectPath).Path
-    Test-Prereqs -ProjectPath $ProjectPath
+    $skipRestore = [bool]$SkipGitHubRestore
+    if ($cfg.ContainsKey('skipGitHubRestore') -and [bool]$cfg.skipGitHubRestore) { $skipRestore = $true }
+    if ($cfg.ContainsKey('skipGitHubVersionCheck') -and [bool]$cfg.skipGitHubVersionCheck) { $skipRestore = $true }
+    Test-Prereqs -ProjectPath $ProjectPath -Cfg $cfg -SkipGitHubRestore:$skipRestore
     $modelDir  = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.SemanticModel" | Select-Object -First 1).FullName
     $reportDir = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.Report"        | Select-Object -First 1).FullName
     $dashRoot  = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path

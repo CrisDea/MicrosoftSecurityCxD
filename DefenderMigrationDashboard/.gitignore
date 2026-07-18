@@ -26,3 +26,9 @@ trend-migration-mapping.csv
 deploy/trend-inventory.local.csv
 trend-inventory.local.csv
 *.local.csv
+
+# Local ingest backups + accumulated trend history (contain customer device data)
+deploy/backups/
+backups/
+deploy/*.local.json
+*.local.json

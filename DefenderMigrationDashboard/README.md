@@ -90,6 +90,9 @@ That publishes the semantic model and report, binds the report to the model, bin
 your app as a Service Principal, generates the 30-day trend history, enables a scheduled refresh, and
 runs a first refresh so the report shows your real Defender data.
 
+> **Prefer prompts to switches?** Run `pwsh ./deploy/Deploy-Dashboard.ps1` with **no parameters** to
+> launch a guided wizard that walks you through config, workspace and options (see *Guided mode*).
+
 ### Other ways to target a workspace
 
 ```powershell
@@ -116,8 +119,12 @@ pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -WorkspaceId
 | `-ClientId` / `-ClientSecret` / `-TenantId` | App credentials passed directly instead of a config file. |
 | `-SkipRefresh` | Publish without triggering a dataset refresh. |
 | `-SkipSchedule` | Publish without enabling the scheduled refresh. |
-| `-TrendCsv` | Path to a Trend Micro device export (CSV). At deploy time each Trend device is matched to the current Defender inventory and the result is embedded in the **TrendMigration** table (see *Trend Micro migration mapping*). Omit to leave the table empty. |
+| `-TrendCsv` | Path to a Trend Micro device export (CSV). At deploy time each Trend device is matched to the current Defender inventory and the result is embedded in the **TrendMigration** table (see *Trend Micro migration mapping*). Omit to **reuse the previously ingested list** (it is no longer emptied). |
 | `-TrendMode` | `Replace` (default) — the supplied export becomes the whole Trend list; `Append` adds only new devices to the git-ignored local master store. Both de-duplicate on the Trend id. Also settable as `trendMode` in config.json. |
+| `-CheckVersionOnly` | Read-only: report local/GitHub/live versions and whether an update is available, then exit. Needs only workspace **Viewer**. |
+| `-Force` | Deploy even when the workspace is already current (refresh live data / re-seed trend + AV tables). |
+| `-SkipVersionCheck` / `-SkipGitHubCheck` | Skip the whole preflight (offline) / skip only the GitHub comparison. |
+| `-SkipGitHubRestore` | Do not auto-download missing/corrupt local content from GitHub (fully offline runs). Also `skipGitHubRestore` in config.json. |
 | `-MatchThreshold` | Domain-suffix fuzzy-match acceptance score (0–100). The short hostname must always match exactly; this governs only how much the DNS domain may differ. Default `82`. Lower to accept looser domains; raise to require closer domains. |
 | `-RemovedAfterDays` | Noise filter. When > 0, devices whose Defender "last seen" is older than this many days are excluded from the model (treated as decommissioned). Default `0` = keep all. Also settable as `removedAfterDays` in config.json. |
 | `-RefreshTimes` | Times of day (`HH:mm`) for the scheduled refresh. Default: 2×/day (06:00, 18:00) — TVM snapshot tables refresh ~daily. |
@@ -249,6 +256,43 @@ version is stamped onto the model description automatically after each successfu
 Other switches: `-SkipVersionCheck` (offline/air-gapped runs), `-SkipGitHubCheck` (compare local vs
 live only). In `config.json` you can set `"skipGitHubVersionCheck": true` or point at a fork with
 `"githubRawChangelogUrl": "https://raw.githubusercontent.com/<owner>/<repo>/<branch>/DefenderMigrationDashboard/CHANGELOG.md"`.
+
+### Guided mode (no parameters)
+
+Run the deploy script with **no parameters** to get a step-by-step wizard instead of memorising
+switches:
+
+```powershell
+.\Deploy-Dashboard.ps1
+```
+
+It walks through the config-file path, an action menu (check for updates only, or deploy/update in
+place), workspace selection, whether to import an updated Trend CSV, force, and a final confirmation
+before anything is published. Supplying **any** parameter runs the classic non-interactive path and
+skips the wizard, so CI/automation is unaffected.
+
+### Self-healing local content
+
+Before every install/update the script deep-checks the local project (model and report `.tmdl`, seed
+placeholders, `definition.pbir`, at least one report page, and non-empty KQL assets). If anything is
+**missing or invalid**, it automatically re-downloads the `DefenderMigrationDashboard` folder from
+GitHub and re-validates — so a partial clone or a corrupted file self-heals without a manual `git`
+step. The restore is line-ending-insensitive and selective (only genuinely missing/different files
+are replaced), so it never rewrites your whole working tree. Pass `-SkipGitHubRestore` (or
+`"skipGitHubRestore": true` in `config.json`) to disable it for fully offline runs.
+
+### Preserving ingested data across updates
+
+Updates never lose data you have already ingested:
+
+- The imported **Trend Micro device list** is reused automatically when you deploy **without**
+  `-TrendCsv`, instead of being emptied. Pass `-TrendCsv` only when you actually want to replace or
+  append the list.
+- The **DeploymentTrend history** accumulates across deploys (it grows beyond the 30-day live query
+  window) so the trend-over-time charts keep their history, and the last-known history is re-pushed if
+  a live hunting query transiently returns zero rows.
+- Both stores are **backed up** before every overwrite (timestamped, the last 15 kept, under
+  `deploy/backups/`, which is git-ignored).
 
 ## Trend Micro migration mapping
 
@@ -426,7 +470,12 @@ Step-by-step install with a decision tree and troubleshooting: see **[INSTALL.md
   the published report + model (add `-RemoveWorkspace -Force` for a throwaway workspace); then
   `pwsh ./deploy/Bootstrap-Deployment.ps1 -Mode Uninstall -AppId <app-guid> -WorkspaceId <id>`
   revokes the app's Defender permissions, removes it from the workspace and deletes local `config.json`
-  (add `-DeleteApp` to also delete the app registration).
+  (add `-DeleteApp` to also delete the app registration). `Remove-Dashboard.ps1` retries transient
+  failures, skips items that are already gone, never deletes the workspace when an item failed, and
+  exits with a summary — so it is always safe to re-run. `-WorkspaceId` can also come from `-ConfigPath`.
+- **Corrupt or missing local files** — the deploy script auto-detects an incomplete project and
+  re-downloads it from GitHub before publishing; if you are offline, add `-SkipGitHubRestore` and
+  restore the folder manually (`git pull`).
 
 For a fix for each specific error code, see **[FAILURE-CODES.md](FAILURE-CODES.md)**.
 

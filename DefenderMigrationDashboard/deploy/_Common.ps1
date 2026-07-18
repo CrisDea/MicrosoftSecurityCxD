@@ -189,7 +189,7 @@ function Invoke-Http {
 
 # --------------------------------------------------------------------- preflight
 function Test-Prereqs {
-    param([string]$ProjectPath)
+    param([string]$ProjectPath, [hashtable]$Cfg, [switch]$SkipGitHubRestore)
     Write-Step "Preflight checks"
     if ($PSVersionTable.PSVersion.Major -lt 5) { throw "PowerShell 5.1 or later is required (found $($PSVersionTable.PSVersion))." }
     Write-Ok "PowerShell $($PSVersionTable.PSVersion)"
@@ -205,11 +205,177 @@ function Test-Prereqs {
 
     if ($ProjectPath) {
         if (-not (Test-Path -LiteralPath $ProjectPath)) { throw "PBIP project not found at '$ProjectPath'." }
-        $md = Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.SemanticModel" -ErrorAction SilentlyContinue | Select-Object -First 1
-        $rd = Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.Report"        -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $md -or -not $rd) { throw "Could not find a *.SemanticModel and a *.Report folder under '$ProjectPath'." }
-        Write-Ok "PBIP project found ($([IO.Path]::GetFileName($md.FullName)) + $([IO.Path]::GetFileName($rd.FullName)))"
+        $dashRoot = Split-Path -Parent $PSScriptRoot
+        $issues = @(Test-ProjectIntegrity -ProjectPath $ProjectPath)
+        if ($issues.Count -gt 0 -and -not $SkipGitHubRestore) {
+            Write-Warn2 "Local content is incomplete or invalid ($($issues.Count) problem(s)) - attempting to re-download it from GitHub..."
+            foreach ($i in $issues) { Write-Host "    - $i" -ForegroundColor DarkYellow }
+            if (Restore-DashboardFromGitHub -DashboardRoot $dashRoot -Cfg $Cfg) {
+                $issues = @(Test-ProjectIntegrity -ProjectPath $ProjectPath)
+            }
+        }
+        if ($issues.Count -gt 0) {
+            throw ("Local content check failed - $($issues.Count) problem(s) remain:`n  - " + ($issues -join "`n  - ") + "`nRun 'git pull' (or re-download the DefenderMigrationDashboard folder) and try again.")
+        }
     }
+}
+
+function Test-ProjectIntegrity {
+    <# Deep validation of the local PBIP project + deploy assets before an install/update. Returns a
+       list of problem strings (empty when everything is present and well-formed) instead of
+       throwing, so the caller can attempt a GitHub re-download and re-validate. Prints non-fatal
+       warnings inline. #>
+    param([string]$ProjectPath)
+    $issues = New-Object System.Collections.Generic.List[string]
+    $pageCount = 0
+    $modelDir  = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.SemanticModel" -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $reportDir = (Get-ChildItem -LiteralPath $ProjectPath -Directory -Filter "*.Report"        -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if (-not $modelDir)  { $issues.Add("No *.SemanticModel folder under '$ProjectPath'.") }
+    if (-not $reportDir) { $issues.Add("No *.Report folder under '$ProjectPath'.") }
+
+    if ($modelDir) {
+        $mdef = Join-Path $modelDir.FullName "definition"
+        foreach ($f in @("model.tmdl", "database.tmdl")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $mdef $f))) { $issues.Add("Missing semantic-model file: definition\$f") }
+        }
+        $needTables = [ordered]@{ "DeviceHealth.tmdl" = "__AVPOSTURE_SEED_B64__"; "DeploymentTrend.tmdl" = "__TREND_SEED_B64__"; "TrendMigration.tmdl" = "__TRENDMIGRATION_SEED_B64__" }
+        foreach ($t in $needTables.Keys) {
+            $tp = Join-Path $mdef "tables\$t"
+            if (-not (Test-Path -LiteralPath $tp)) { $issues.Add("Missing table definition: definition\tables\$t"); continue }
+            $raw = Get-Content -LiteralPath $tp -Raw
+            if ([string]::IsNullOrWhiteSpace($raw)) { $issues.Add("Empty table definition: definition\tables\$t"); continue }
+            $ph = [string]$needTables[$t]
+            if ($ph -and $raw -notmatch [regex]::Escape($ph)) { Write-Warn2 "definition\tables\$t is missing its $ph seed placeholder - deploy-time seeding of that table will be skipped." }
+        }
+    }
+
+    if ($reportDir) {
+        if (-not (Test-Path -LiteralPath (Join-Path $reportDir.FullName "definition.pbir"))) { $issues.Add("Missing report file: definition.pbir") }
+        $pagesDir  = Join-Path $reportDir.FullName "definition\pages"
+        $pageCount = @(Get-ChildItem -LiteralPath $pagesDir -Directory -ErrorAction SilentlyContinue).Count
+        if ($pageCount -lt 1) { $issues.Add("Report has no pages under definition\pages.") }
+    }
+
+    foreach ($a in @("DeploymentTrend.kql", "DeviceAvPosture.kql")) {
+        $ap = Join-Path $PSScriptRoot "assets\$a"
+        if (-not (Test-Path -LiteralPath $ap)) { $issues.Add("Missing deploy asset: assets\$a") }
+        elseif ((Get-Item -LiteralPath $ap).Length -eq 0) { $issues.Add("Empty deploy asset: assets\$a") }
+    }
+
+    if ($issues.Count -eq 0) { Write-Ok "Local content verified: model tables, seed placeholders, report pages ($pageCount) and deploy assets present." }
+    return $issues.ToArray()
+}
+
+function Read-Menu {
+    <# Simple numbered-menu prompt returning the 1-based choice. Enter accepts -Default. #>
+    param([string]$Title, [string[]]$Options, [int]$Default = 1)
+    Write-Host ""
+    Write-Host $Title -ForegroundColor Cyan
+    for ($i = 0; $i -lt $Options.Count; $i++) { Write-Host ("  {0}) {1}" -f ($i + 1), $Options[$i]) }
+    while ($true) {
+        $ans = Read-Host ("Choose 1-{0} [default {1}]" -f $Options.Count, $Default)
+        if ([string]::IsNullOrWhiteSpace($ans)) { return $Default }
+        $n = 0
+        if ([int]::TryParse($ans, [ref]$n) -and $n -ge 1 -and $n -le $Options.Count) { return $n }
+        Write-Host "  Please enter a number between 1 and $($Options.Count)." -ForegroundColor Yellow
+    }
+}
+
+function Read-YesNo {
+    <# Yes/no prompt; Enter accepts -Default. #>
+    param([string]$Prompt, [bool]$Default = $true)
+    $suffix = if ($Default) { "[Y/n]" } else { "[y/N]" }
+    while ($true) {
+        $ans = Read-Host "$Prompt $suffix"
+        if ([string]::IsNullOrWhiteSpace($ans)) { return $Default }
+        switch -Regex ($ans.Trim()) {
+            '^(y|yes)$' { return $true }
+            '^(n|no)$'  { return $false }
+            default     { Write-Host "  Please answer y or n." -ForegroundColor Yellow }
+        }
+    }
+}
+
+function Start-DeployWizard {
+    <# Guided, no-arguments experience: walks a first-time user through config/auth, action,
+       workspace and Trend-data choices with plain numbered menus (no Out-GridView dependency),
+       then returns a hashtable the caller applies to its parameters. #>
+    param([string]$ScriptRoot)
+    $choices = @{ ConfigPath = $null; CheckVersionOnly = $false; Force = $false; SelectWorkspace = $false; WorkspaceId = $null; TrendCsv = $null }
+    Write-Host ""
+    Write-Host "==================================================================" -ForegroundColor Cyan
+    Write-Host "  Defender Migration Dashboard - guided deploy" -ForegroundColor Cyan
+    Write-Host "  (no parameters supplied - I'll ask a few short questions)"       -ForegroundColor DarkCyan
+    Write-Host "==================================================================" -ForegroundColor Cyan
+
+    # 1) config / auth
+    $cfgCandidates = @(@(
+        (Join-Path $ScriptRoot "config.json"),
+        (Join-Path (Split-Path -Parent $ScriptRoot) "config.json")
+    ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -Unique)
+    $useSpConfig = $false
+    if ($cfgCandidates.Count -gt 0) {
+        $c = $cfgCandidates[0]
+        if (Read-YesNo "Found a config.json at '$c'. Use it (service-principal auth)?" $true) { $choices.ConfigPath = $c; $useSpConfig = $true }
+    }
+    if (-not $choices.ConfigPath) {
+        $p = Read-Host "Path to config.json (Enter to sign in interactively with Azure CLI instead)"
+        if (-not [string]::IsNullOrWhiteSpace($p)) {
+            if (Test-Path -LiteralPath $p) { $choices.ConfigPath = $p; $useSpConfig = $true }
+            else { Write-Host "  '$p' not found - falling back to interactive sign-in." -ForegroundColor Yellow }
+        }
+    }
+
+    # 2) action
+    $action = Read-Menu "What would you like to do?" @(
+        "Deploy / update the dashboard in place",
+        "Check for updates only (read-only, no changes)"
+    ) 1
+    if ($action -eq 2) { $choices.CheckVersionOnly = $true }
+
+    # 3) workspace
+    if ($useSpConfig) {
+        $wid = Read-Host "Target workspace GUID (Enter to use workspaceId from config.json)"
+        if (-not [string]::IsNullOrWhiteSpace($wid)) { $choices.WorkspaceId = $wid.Trim() }
+    } else {
+        $choices.SelectWorkspace = $true   # interactive picker later in the flow
+    }
+
+    # 4) Trend data (only when actually deploying)
+    if (-not $choices.CheckVersionOnly) {
+        $store = Join-Path $ScriptRoot "trend-inventory.local.csv"
+        $have = 0
+        if (Test-Path -LiteralPath $store) { $have = @(Read-TrendStore -Path $store).Count }
+        if ($have -gt 0) {
+            Write-Host ""
+            Write-Host "  A saved Trend list with $have device(s) was found - it will be kept and re-pushed." -ForegroundColor Green
+            if (Read-YesNo "Import an additional / updated Trend CSV as well?" $false) {
+                $tc = Read-Host "  Path to the Trend export CSV"
+                if (-not [string]::IsNullOrWhiteSpace($tc) -and (Test-Path -LiteralPath $tc)) { $choices.TrendCsv = $tc.Trim() }
+                elseif (-not [string]::IsNullOrWhiteSpace($tc)) { Write-Host "  '$tc' not found - skipping the import." -ForegroundColor Yellow }
+            }
+        } else {
+            if (Read-YesNo "No Trend list has been ingested yet. Import a Trend export CSV now?" $false) {
+                $tc = Read-Host "  Path to the Trend export CSV"
+                if (-not [string]::IsNullOrWhiteSpace($tc) -and (Test-Path -LiteralPath $tc)) { $choices.TrendCsv = $tc.Trim() }
+                elseif (-not [string]::IsNullOrWhiteSpace($tc)) { Write-Host "  '$tc' not found - skipping the import." -ForegroundColor Yellow }
+            }
+        }
+        if (Read-YesNo "Force redeploy even if the workspace is already current?" $false) { $choices.Force = $true }
+    }
+
+    # summary + confirm
+    Write-Host ""
+    Write-Host "Summary:" -ForegroundColor Cyan
+    Write-Host ("  Auth       : {0}" -f $(if ($choices.ConfigPath) { "service principal ($($choices.ConfigPath))" } else { "interactive Azure CLI" }))
+    Write-Host ("  Action     : {0}" -f $(if ($choices.CheckVersionOnly) { "check for updates (read-only)" } else { "deploy / update in place" }))
+    Write-Host ("  Workspace  : {0}" -f $(if ($choices.WorkspaceId) { $choices.WorkspaceId } elseif ($choices.SelectWorkspace) { "choose interactively" } else { "from config.json" }))
+    if (-not $choices.CheckVersionOnly) {
+        Write-Host ("  Trend data : {0}" -f $(if ($choices.TrendCsv) { "import $($choices.TrendCsv) (merged with the saved list)" } else { "keep the previously ingested list" }))
+        Write-Host ("  Force      : {0}" -f $choices.Force)
+    }
+    if (-not (Read-YesNo "Proceed?" $true)) { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
+    return $choices
 }
 
 function Ensure-SignedIn {
@@ -364,6 +530,93 @@ function Get-GitHubVersion {
     $m = [regex]::Match($content, '##\s*\[(\d{4}\.\d{2}\.\d{2}\.\d{2})\]')
     if ($m.Success) { return $m.Groups[1].Value }
     return (Get-VersionFromText $content)
+}
+
+function Resolve-GitHubRepo {
+    <# Resolves owner/repo/branch for the dashboard's GitHub source: parsed from config
+       githubRawChangelogUrl, else the local git remote+branch, else the built-in default
+       (CrisDea/MicrosoftSecurityCxD @ main). #>
+    param([string]$DashboardRoot, [hashtable]$Cfg)
+    $owner = $null; $repo = $null; $branch = $null
+    if ($Cfg -and $Cfg.ContainsKey('githubRawChangelogUrl') -and $Cfg.githubRawChangelogUrl) {
+        $mm = [regex]::Match([string]$Cfg.githubRawChangelogUrl, 'raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/')
+        if ($mm.Success) { $owner = $mm.Groups[1].Value; $repo = $mm.Groups[2].Value; $branch = $mm.Groups[3].Value }
+    }
+    if ((-not $owner) -and $DashboardRoot) {
+        try {
+            $remote = (& git -C $DashboardRoot remote get-url origin 2>$null)
+            $b      = (& git -C $DashboardRoot rev-parse --abbrev-ref HEAD 2>$null)
+            if ($remote) {
+                $mm = [regex]::Match($remote, 'github\.com[:/]+([^/]+)/([^/.]+)')
+                if ($mm.Success) { $owner = $mm.Groups[1].Value; $repo = $mm.Groups[2].Value; if ($b -and $b -ne 'HEAD') { $branch = $b } }
+            }
+        } catch {}
+    }
+    if (-not $owner)  { $owner  = 'CrisDea' }
+    if (-not $repo)   { $repo   = 'MicrosoftSecurityCxD' }
+    if (-not $branch) { $branch = 'main' }
+    return [pscustomobject]@{ Owner = $owner; Repo = $repo; Branch = $branch }
+}
+
+function Restore-DashboardFromGitHub {
+    <# Recovers a missing/incomplete local clone by downloading the public repo zip from GitHub and
+       copying the dashboard CONTENT (pbip-project + deploy\assets by default) into place. It does
+       NOT overwrite the running deploy scripts. Unauthenticated (public repo). Returns $true on a
+       successful restore. #>
+    param([string]$DashboardRoot, [hashtable]$Cfg, [string[]]$Subfolders = @('pbip-project', 'deploy\assets'))
+    if (-not $DashboardRoot) { return $false }
+    $gh = Resolve-GitHubRepo -DashboardRoot $DashboardRoot -Cfg $Cfg
+    $zipUrl = "https://codeload.github.com/$($gh.Owner)/$($gh.Repo)/zip/refs/heads/$($gh.Branch)"
+    Write-Step "Restoring dashboard content from GitHub ($($gh.Owner)/$($gh.Repo)@$($gh.Branch))"
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ("dmd-restore-" + [Guid]::NewGuid().ToString('N'))
+    $zip = "$tmp.zip"
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch {}
+    try {
+        Invoke-WebRequest -Uri $zipUrl -OutFile $zip -UseBasicParsing -TimeoutSec 120 -ErrorAction Stop
+        New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+        Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+        $extractedRoot = Get-ChildItem -LiteralPath $tmp -Directory | Select-Object -First 1
+        if (-not $extractedRoot) { throw "the downloaded archive was empty" }
+        $srcDash = Join-Path $extractedRoot.FullName "DefenderMigrationDashboard"
+        if (-not (Test-Path -LiteralPath $srcDash)) { throw "DefenderMigrationDashboard was not found in the archive" }
+        $restored = 0
+        foreach ($sf in $Subfolders) {
+            $src = Join-Path $srcDash $sf
+            $dst = Join-Path $DashboardRoot $sf
+            if (-not (Test-Path -LiteralPath $src)) { Write-Warn2 "  The GitHub copy has no '$sf' - skipping."; continue }
+            if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path $dst | Out-Null }
+            $copied = 0
+            foreach ($file in (Get-ChildItem -LiteralPath $src -Recurse -File)) {
+                $rel    = $file.FullName.Substring($src.Length).TrimStart('\', '/')
+                $target = Join-Path $dst $rel
+                $need = $true
+                if (Test-Path -LiteralPath $target) {
+                    try {
+                        $a = (Get-Content -LiteralPath $file.FullName -Raw) -replace "`r", ""
+                        $b = (Get-Content -LiteralPath $target -Raw) -replace "`r", ""
+                        if ($a -eq $b) { $need = $false }   # identical ignoring line endings - leave it (avoids CRLF/LF churn)
+                    } catch {}
+                }
+                if ($need) {
+                    $tdir = Split-Path -Parent $target
+                    if ($tdir -and -not (Test-Path -LiteralPath $tdir)) { New-Item -ItemType Directory -Force -Path $tdir | Out-Null }
+                    Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+                    $copied++
+                }
+            }
+            $restored++
+            Write-Ok "  Restored $sf ($copied file(s) refreshed)"
+        }
+        if ($restored -eq 0) { throw "nothing was restored" }
+        Write-Ok "GitHub restore complete ($restored folder(s))."
+        return $true
+    } catch {
+        Write-Warn2 "GitHub restore failed ($($_.Exception.Message)). Fix your local clone manually (git pull) and re-run."
+        return $false
+    } finally {
+        Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Invoke-VersionPreflight {
@@ -541,6 +794,93 @@ function Invoke-RefreshAndWait {
 }
 
 # --------------------------------------------------------------------- live Graph binding
+function Backup-LocalStore {
+    <# Before a deploy overwrites a local data store (Trend list / trend history), copy the
+       current file into deploy\backups\ with a timestamped name so previously-ingested data can
+       always be recovered. Keeps the most recent -Keep copies per store; older ones are pruned.
+       Returns the backup path, or $null when there was nothing to back up. #>
+    param([string]$Path, [int]$Keep = 15)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return $null }
+    $backupDir = Join-Path $PSScriptRoot "backups"
+    if (-not (Test-Path -LiteralPath $backupDir)) { New-Item -ItemType Directory -Force -Path $backupDir | Out-Null }
+    $base  = [IO.Path]::GetFileNameWithoutExtension($Path)
+    $ext   = [IO.Path]::GetExtension($Path)
+    $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+    $dest  = Join-Path $backupDir "$base.$stamp$ext"
+    Copy-Item -LiteralPath $Path -Destination $dest -Force
+    $old = @(Get-ChildItem -LiteralPath $backupDir -File -Filter "$base.*$ext" -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -Skip $Keep)
+    foreach ($f in $old) { Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue }
+    return $dest
+}
+
+function Get-TrendHistoryKey {
+    <# Stable de-dup key for a DeploymentTrend row: the day (first 10 chars of Date) and group. #>
+    param($Row)
+    $d = [string]$Row.Date
+    if ($d.Length -ge 10) { $d = $d.Substring(0, 10) }
+    return "$d|$([string]$Row.MachineGroup)"
+}
+
+function Read-TrendHistoryStore {
+    <# Reads the git-ignored local DeploymentTrend history store (JSON array of day/group rows).
+       Returns an empty array when the store is absent or unreadable. #>
+    param([string]$Path)
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return @() }
+    try {
+        $raw = Get-Content -LiteralPath $Path -Raw
+        if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+        return @($raw | ConvertFrom-Json)
+    } catch {
+        Write-Warn2 "Could not read the trend-history store '$Path' ($($_.Exception.Message)); starting a fresh history."
+        return @()
+    }
+}
+
+function Write-TrendHistoryStore {
+    <# Persists the accumulated DeploymentTrend history to a JSON array. #>
+    param([string]$Path, [object[]]$Rows)
+    if (-not $Path) { return }
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    $json = if ($Rows -and $Rows.Count -gt 0) { $Rows | ConvertTo-Json -Depth 5 } else { "[]" }
+    Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
+}
+
+function Merge-TrendHistory {
+    <# Accumulates DeploymentTrend day/group rows across deploys so the migration trend keeps
+       history beyond the 30-day advanced-hunting window. For an overlapping (Date, MachineGroup)
+       the counts come from the fresh generation, but NonCompliant keeps the maximum ever recorded
+       for that day (the KQL only sets NonCompliant on the latest day, so this preserves the
+       point-in-time value once a day rolls out of "today"). Rows older than -RetentionDays from
+       the newest day are dropped to bound the embedded seed size. Returns the merged rows sorted
+       by date then group. #>
+    param([object[]]$Existing, [object[]]$New, [int]$RetentionDays = 400)
+    $map = [ordered]@{}
+    foreach ($e in $Existing) { if ($null -ne $e) { $map[(Get-TrendHistoryKey $e)] = $e } }
+    foreach ($n in $New) {
+        if ($null -eq $n) { continue }
+        $k = Get-TrendHistoryKey $n
+        if ($map.Contains($k)) {
+            $old = $map[$k]
+            $oldNc = 0; if ($old.PSObject.Properties['NonCompliant']) { [void][int]::TryParse([string]$old.NonCompliant, [ref]$oldNc) }
+            $newNc = 0; if ($n.PSObject.Properties['NonCompliant'])  { [void][int]::TryParse([string]$n.NonCompliant,  [ref]$newNc) }
+            if ($newNc -lt $oldNc -and $n.PSObject.Properties['NonCompliant']) { $n.NonCompliant = $oldNc }
+        }
+        $map[$k] = $n
+    }
+    $rows = @($map.Values)
+    if ($RetentionDays -gt 0 -and $rows.Count -gt 0) {
+        $dates = New-Object System.Collections.ArrayList
+        foreach ($r in $rows) { try { [void]$dates.Add([datetime]::Parse((Get-TrendHistoryKey $r).Split('|')[0])) } catch {} }
+        if ($dates.Count -gt 0) {
+            $cutoff = ($dates | Measure-Object -Maximum).Maximum.AddDays(-$RetentionDays)
+            $rows = @($rows | Where-Object { try { [datetime]::Parse((Get-TrendHistoryKey $_).Split('|')[0]) -ge $cutoff } catch { $true } })
+        }
+    }
+    return @($rows | Sort-Object @{ Expression = { (Get-TrendHistoryKey $_).Split('|')[0] } }, @{ Expression = { [string]$_.MachineGroup } })
+}
+
 function New-TrendSeedOverride {
     <# Generates the DeploymentTrend history at deploy time and returns a Get-Parts override
        that embeds it in the model. The advanced-hunting endpoint is POST-only and cannot run
@@ -566,6 +906,8 @@ function New-TrendSeedOverride {
     $kqlPath = Join-Path $PSScriptRoot "assets\DeploymentTrend.kql"
     if (-not (Test-Path -LiteralPath $kqlPath)) { throw "Trend query asset not found: $kqlPath" }
     $kql = [IO.File]::ReadAllText($kqlPath)
+    $histStore = Join-Path $PSScriptRoot "deployment-trend.local.json"
+    $history = @(Read-TrendHistoryStore -Path $histStore)
     $seedJson = "[]"
     try {
         $body = @{ client_id = $ClientId; client_secret = $ClientSecret; grant_type = "client_credentials"
@@ -576,14 +918,29 @@ function New-TrendSeedOverride {
                     -Headers @{ Authorization = "Bearer $tok" } -ContentType "application/json" -Body (@{ Query = $kql } | ConvertTo-Json)
         $rows = @($resp.Results)
         if ($rows.Count -gt 0) {
-            $seedJson = ($rows | ConvertTo-Json -Depth 5 -Compress)
-            if ($rows.Count -eq 1) { $seedJson = "[$seedJson]" }   # single record -> keep it an array
-            Write-Ok "Trend history generated: $($rows.Count) day/group rows"
+            $merged = @(Merge-TrendHistory -Existing $history -New $rows)
+            Backup-LocalStore -Path $histStore | Out-Null
+            Write-TrendHistoryStore -Path $histStore -Rows $merged
+            $seedJson = ($merged | ConvertTo-Json -Depth 5 -Compress)
+            if ($merged.Count -eq 1) { $seedJson = "[$seedJson]" }   # single record -> keep it an array
+            $extra = $merged.Count - $rows.Count
+            if ($extra -gt 0) { Write-Ok "Trend history: $($rows.Count) fresh day/group rows + $extra retained from prior deploys = $($merged.Count) total" }
+            else              { Write-Ok "Trend history generated: $($rows.Count) day/group rows" }
+        } elseif ($history.Count -gt 0) {
+            $seedJson = ($history | ConvertTo-Json -Depth 5 -Compress)
+            if ($history.Count -eq 1) { $seedJson = "[$seedJson]" }
+            Write-Warn2 "Advanced-hunting trend query returned no rows - re-pushing $($history.Count) day/group rows retained from prior deploys so the trend is preserved."
         } else {
             Write-Warn2 "Advanced-hunting trend query returned no rows - trend will be empty until more history accrues."
         }
     } catch {
-        Write-Warn2 "Could not generate trend history ($($_.Exception.Message)). Deploying with an empty trend; re-run once the app has WindowsDefenderATP AdvancedQuery.Read.All / Machine.Read.All consented."
+        if ($history.Count -gt 0) {
+            $seedJson = ($history | ConvertTo-Json -Depth 5 -Compress)
+            if ($history.Count -eq 1) { $seedJson = "[$seedJson]" }
+            Write-Warn2 "Could not generate fresh trend history ($($_.Exception.Message)). Re-pushing $($history.Count) day/group rows retained from prior deploys so nothing is lost."
+        } else {
+            Write-Warn2 "Could not generate trend history ($($_.Exception.Message)). Deploying with an empty trend; re-run once the app has WindowsDefenderATP AdvancedQuery.Read.All / Machine.Read.All consented."
+        }
     }
     $seedB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($seedJson))
     return @{ "definition/tables/DeploymentTrend.tmdl" = $txt.Replace('__TREND_SEED_B64__', $seedB64) }
@@ -1131,16 +1488,26 @@ function New-TrendMigrationSeedOverride {
     if ($txt -notmatch '__TRENDMIGRATION_SEED_B64__') { return $null }
     if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "trend-inventory.local.csv" }
     $seedJson = "[]"
-    if (-not $TrendCsv -and -not (($TrendMode -eq 'Append') -and (Test-Path -LiteralPath $InventoryStore))) {
-        Write-Warn2 "No -TrendCsv supplied - TrendMigration will be empty. Pass -TrendCsv <trend-export.csv> to populate the migration mapping."
+    $storeExists = Test-Path -LiteralPath $InventoryStore
+    if (-not $TrendCsv -and -not $storeExists) {
+        Write-Warn2 "No -TrendCsv supplied and no saved Trend list found - TrendMigration will be empty. Pass -TrendCsv <trend-export.csv> to populate the migration mapping."
     } else {
         try {
-            $newRecs = if ($TrendCsv) { @(Get-TrendDeviceRecords -TrendCsv $TrendCsv -Source $TrendSource) } else { @() }
             $existing = Read-TrendStore -Path $InventoryStore
-            $merged = Merge-TrendStore -Existing $existing -New $newRecs -Mode $TrendMode
-            if ($merged.Count -eq 0) { throw "no device names found in the Trend export or master store" }
-            Write-TrendStore -Path $InventoryStore -Records $merged
-            Write-Ok "Trend list ($TrendMode): $($merged.Count) unique devices in store ($InventoryStore)"
+            if ($TrendCsv) {
+                $newRecs = @(Get-TrendDeviceRecords -TrendCsv $TrendCsv -Source $TrendSource)
+                $merged  = Merge-TrendStore -Existing $existing -New $newRecs -Mode $TrendMode
+                if ($merged.Count -eq 0) { throw "no device names found in the Trend export or master store" }
+                Backup-LocalStore -Path $InventoryStore | Out-Null
+                Write-TrendStore -Path $InventoryStore -Records $merged
+                Write-Ok "Trend list ($TrendMode): ingested $($newRecs.Count) from export; $($merged.Count) unique devices now in the store ($InventoryStore)"
+            } else {
+                # No new export on this run: re-use (re-push) the previously ingested Trend list
+                # instead of emptying it, so an update-in-place preserves the ingested data.
+                $merged = $existing
+                if ($merged.Count -eq 0) { throw "the saved Trend list is empty" }
+                Write-Ok "Trend list preserved: re-using $($merged.Count) devices previously ingested into the store ($InventoryStore)"
+            }
             $inv = Get-DefenderInventory -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
             $map = Get-TrendDefenderMapping -TrendRecords $merged -Inventory $inv -MatchThreshold $MatchThreshold
             $seedJson = ConvertTo-TrendMigrationSeed -Mapping $map
