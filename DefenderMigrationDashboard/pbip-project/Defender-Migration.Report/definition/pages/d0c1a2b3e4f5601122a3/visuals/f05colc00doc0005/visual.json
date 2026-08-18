@@ -296,7 +296,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Colours: green = good / on latest, amber = behind, red = out of date or failing. On the estate donut, red = not onboarded but on the Trend list, grey = Trend-only (not discovered).",
+                    "value": "Colours: green = good / on latest, amber = behind, red = out of date or failing. On the estate donut, red = not onboarded but on the legacy AV/EDR list, grey = legacy-AV-only (not discovered).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",

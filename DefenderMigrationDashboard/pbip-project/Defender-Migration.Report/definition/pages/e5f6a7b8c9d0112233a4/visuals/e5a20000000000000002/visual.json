@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Each device in your Trend export is matched to the current Defender inventory (same source as the dashboard). Exact matches first, then closest name for minor naming differences. Refresh by re-deploying with -TrendCsv, or run Import-TrendInventory.ps1. Use the Filters pane to slice by status or match type.",
+                    "value": "Each device in your legacy AV/EDR export is matched to the current Defender inventory (same source as the dashboard). Exact matches first, then closest name for minor naming differences. Every row keeps its own legacy product and vendor, so several AV/EDR tools can be tracked side by side. Refresh by re-deploying with -LegacyCsv, or run Import-LegacyAvInventory.ps1. Use the Filters pane to slice by status or match type.",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",

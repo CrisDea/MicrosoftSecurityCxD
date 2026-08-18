@@ -165,56 +165,70 @@
                 "Measure": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "Trend Source Devices"
+                  "Property": "Legacy Source Devices"
                 }
               },
-              "queryRef": "TrendMigration.Trend Source Devices",
-              "nativeQueryRef": "Trend Source Devices"
+              "queryRef": "LegacyAvMigration.Legacy Source Devices",
+              "nativeQueryRef": "Legacy Source Devices"
             },
             {
               "field": {
                 "Measure": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "Trend Migrated"
+                  "Property": "Legacy Migrated"
                 }
               },
-              "queryRef": "TrendMigration.Trend Migrated",
-              "nativeQueryRef": "Trend Migrated"
+              "queryRef": "LegacyAvMigration.Legacy Migrated",
+              "nativeQueryRef": "Legacy Migrated"
             },
             {
               "field": {
                 "Measure": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "Trend Migration %"
+                  "Property": "Legacy Migration %"
                 }
               },
-              "queryRef": "TrendMigration.Trend Migration %",
-              "nativeQueryRef": "Trend Migration %"
+              "queryRef": "LegacyAvMigration.Legacy Migration %",
+              "nativeQueryRef": "Legacy Migration %"
             },
             {
               "field": {
                 "Measure": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "Trend Not In Defender"
+                  "Property": "Legacy Not In Defender"
                 }
               },
-              "queryRef": "TrendMigration.Trend Not In Defender",
-              "nativeQueryRef": "Trend Not In Defender"
+              "queryRef": "LegacyAvMigration.Legacy Not In Defender",
+              "nativeQueryRef": "Legacy Not In Defender"
+            },
+            {
+              "field": {
+                "Measure": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "LegacyAvMigration"
+                    }
+                  },
+                  "Property": "Legacy Products In Scope"
+                }
+              },
+              "queryRef": "LegacyAvMigration.Legacy Products In Scope",
+              "nativeQueryRef": "Legacy Products In Scope"
             }
           ]
         }

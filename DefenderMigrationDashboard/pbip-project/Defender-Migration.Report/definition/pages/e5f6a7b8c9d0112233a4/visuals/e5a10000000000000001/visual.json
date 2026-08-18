@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Trend to Defender migration \u2014 mapped from your Trend Micro export",
+                    "value": "Legacy AV/EDR to Defender migration \u2014 mapped from your third-party exports",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "18pt",

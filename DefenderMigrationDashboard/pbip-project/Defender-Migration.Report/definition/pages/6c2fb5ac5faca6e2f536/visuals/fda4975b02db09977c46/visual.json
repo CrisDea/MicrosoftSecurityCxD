@@ -846,7 +846,7 @@
                     },
                     "Right": {
                       "Literal": {
-                        "Value": "'Trend only'"
+                        "Value": "'Legacy AV only'"
                       }
                     }
                   }

@@ -4,10 +4,10 @@ model Model
 	discourageImplicitMeasures
 	sourceQueryCulture: en-GB
 
-	annotation PBI_QueryOrder = ["DeviceHealth","DeploymentTrend","Baselines","TrendMigration","EstateConfigState"]
+	annotation PBI_QueryOrder = ["DeviceHealth","DeploymentTrend","Baselines","LegacyAvMigration","EstateConfigState"]
 
 ref table DeviceHealth
 ref table DeploymentTrend
 ref table Baselines
-ref table TrendMigration
+ref table LegacyAvMigration
 ref table EstateConfigState

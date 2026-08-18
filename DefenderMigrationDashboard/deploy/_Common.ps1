@@ -19,6 +19,48 @@
 
 Set-StrictMode -Version Latest
 
+# --------------------------------------------------------------------- runtime baseline
+# These scripts target Windows PowerShell 5.1 (the version shipped in-box on Windows) and also run
+# unchanged on PowerShell 7+. Two 5.1-specific behaviours must be corrected before any HTTPS call:
+#
+#   1. TLS. Windows PowerShell 5.1 uses the .NET Framework default protocol list, which on many
+#      estates still negotiates TLS 1.0/1.1. Entra ID, the Fabric/Power BI APIs and the Defender
+#      APIs all require TLS 1.2 or better, so a 5.1 host would otherwise fail the handshake with a
+#      misleading "underlying connection was closed" error. Add TLS 1.2 (and 1.3 where the host
+#      supports it) without removing anything the host already trusts.
+#   2. Progress bars. Invoke-WebRequest in 5.1 renders a progress bar for every call, which is slow
+#      over large paged exports and pollutes non-interactive logs.
+if ([Net.ServicePointManager]::SecurityProtocol -ne 0) {
+    $desired = [Net.SecurityProtocolType]::Tls12
+    # Tls13 only exists on newer .NET/Windows builds - probe rather than assume.
+    try { $desired = $desired -bor [Net.SecurityProtocolType]::Tls13 } catch { }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor $desired }
+    catch { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 }
+}
+$script:PreviousProgressPreference = $ProgressPreference
+$ProgressPreference = 'SilentlyContinue'
+
+function Test-PowerShellBaseline {
+    <# Verifies the host meets the documented minimum (Windows PowerShell 5.1 or PowerShell 7+) and
+       warns on the PowerShell 2.0/3.0/4.0 hosts where the language features used here are absent. #>
+    $v = $PSVersionTable.PSVersion
+    if ($v.Major -lt 5) {
+        throw "This dashboard requires Windows PowerShell 5.1 or PowerShell 7+. Detected $v. Install Windows Management Framework 5.1 or run under pwsh."
+    }
+    if ($v.Major -eq 5 -and $v.Minor -lt 1) {
+        Write-Warn2 "Detected PowerShell $v. 5.1 is the supported minimum; upgrade if you hit unexpected errors."
+    }
+}
+
+function Protect-SecretForDisplay {
+    <# Masks a secret for console/log output, keeping only enough to identify which value it was.
+       Never log a raw client secret - use this everywhere a secret might reach the transcript. #>
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return "<not set>" }
+    if ($Value.Length -le 6) { return "******" }
+    return ("******" + $Value.Substring($Value.Length - 4))
+}
+
 # --------------------------------------------------------------------- endpoints
 $script:FabricBase  = "https://api.fabric.microsoft.com/v1"
 $script:FabricRes   = "https://api.fabric.microsoft.com"
@@ -37,15 +79,82 @@ $script:TokenCache = @{}
 
 function Import-DeployConfig {
     <# Reads a config.json (if any) and returns a hashtable of settings. Never throws on a
-       missing file - returns an empty hashtable so callers can merge defensively. #>
-    param([string]$ConfigPath)
+       missing file - returns an empty hashtable so callers can merge defensively.
+
+       Security: config.json holds a plaintext client secret, so this also runs a lightweight
+       hygiene check on where the file lives and who can read it, and warns (never blocks) when
+       the file is somewhere it should not be. #>
+    param([string]$ConfigPath, [switch]$SkipSecurityCheck)
     if (-not $ConfigPath) { return @{} }
     if (-not (Test-Path -LiteralPath $ConfigPath)) { throw "ConfigPath not found: $ConfigPath" }
     try { $cfg = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json }
     catch { throw "config.json at '$ConfigPath' is not valid JSON: $($_.Exception.Message)" }
     $h = @{}
     foreach ($p in $cfg.PSObject.Properties) { if ($p.Value) { $h[$p.Name] = $p.Value } }
+    if (-not $SkipSecurityCheck) { Test-ConfigSecurity -ConfigPath $ConfigPath }
     return $h
+}
+
+function Test-ConfigSecurity {
+    <# Warns when the credential file is stored somewhere risky: inside a cloud-synced folder
+       (OneDrive/Dropbox/Box/Google Drive - the secret would leave the machine), inside a git work
+       tree where it is not ignored (it could be committed), or readable by users beyond the owner
+       and the local administrators. Advisory only: it never blocks a deployment. #>
+    param([string]$ConfigPath)
+    try {
+        $full = (Resolve-Path -LiteralPath $ConfigPath).Path
+
+        # 1) Cloud-synced locations.
+        $syncRoots = @($env:OneDrive, $env:OneDriveCommercial, $env:OneDriveConsumer) |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+        foreach ($root in $syncRoots) {
+            if ($full.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+                Write-Warn2 "SECURITY: '$full' is inside a cloud-synced folder ($root). The client secret will be uploaded. Move it to a local-only path."
+                break
+            }
+        }
+        foreach ($name in @('Dropbox', 'Google Drive', 'Box', 'iCloudDrive')) {
+            if ($full -like "*\$name\*") {
+                Write-Warn2 "SECURITY: '$full' looks like it is inside a $name sync folder. The client secret will leave this machine. Move it to a local-only path."
+                break
+            }
+        }
+
+        # 2) Inside a git work tree and not ignored.
+        $dir = Split-Path -Parent $full
+        $probe = $dir
+        $repoRoot = $null
+        while ($probe) {
+            if (Test-Path -LiteralPath (Join-Path $probe '.git')) { $repoRoot = $probe; break }
+            $parent = Split-Path -Parent $probe
+            if ($parent -eq $probe) { break }
+            $probe = $parent
+        }
+        if ($repoRoot) {
+            $ignored = $false
+            try {
+                & git -C $repoRoot check-ignore -q -- $full 2>$null
+                $ignored = ($LASTEXITCODE -eq 0)
+            } catch { $ignored = $false }
+            if (-not $ignored) {
+                Write-Warn2 "SECURITY: '$full' is inside the git repository at '$repoRoot' and is NOT git-ignored. It could be committed. Move it outside the repo, or add it to .gitignore."
+            }
+        }
+
+        # 3) Over-broad ACL.
+        try {
+            $acl = Get-Acl -LiteralPath $full
+            $risky = @($acl.Access | Where-Object {
+                $id = [string]$_.IdentityReference
+                $_.AccessControlType -eq 'Allow' -and (
+                    $id -match 'Everyone|BUILTIN\\Users|NT AUTHORITY\\Authenticated Users|\\Domain Users$')
+            })
+            if ($risky.Count -gt 0) {
+                $who = ($risky | ForEach-Object { [string]$_.IdentityReference } | Select-Object -Unique) -join ', '
+                Write-Warn2 "SECURITY: '$full' is readable by $who. Restrict it to your account, e.g.: icacls `"$full`" /inheritance:r /grant:r `"$env:USERNAME`:F`""
+            }
+        } catch { }
+    } catch { }
 }
 
 function Initialize-Auth {
@@ -238,7 +347,7 @@ function Test-ProjectIntegrity {
         foreach ($f in @("model.tmdl", "database.tmdl")) {
             if (-not (Test-Path -LiteralPath (Join-Path $mdef $f))) { $issues.Add("Missing semantic-model file: definition\$f") }
         }
-        $needTables = [ordered]@{ "DeviceHealth.tmdl" = "__AVPOSTURE_SEED_B64__"; "DeploymentTrend.tmdl" = "__TREND_SEED_B64__"; "TrendMigration.tmdl" = "__TRENDMIGRATION_SEED_B64__" }
+        $needTables = [ordered]@{ "DeviceHealth.tmdl" = "__AVPOSTURE_SEED_B64__"; "DeploymentTrend.tmdl" = "__TREND_SEED_B64__"; "LegacyAvMigration.tmdl" = "__LEGACYMIGRATION_SEED_B64__" }
         foreach ($t in $needTables.Keys) {
             $tp = Join-Path $mdef "tables\$t"
             if (-not (Test-Path -LiteralPath $tp)) { $issues.Add("Missing table definition: definition\tables\$t"); continue }
@@ -298,10 +407,10 @@ function Read-YesNo {
 
 function Start-DeployWizard {
     <# Guided, no-arguments experience: walks a first-time user through config/auth, action,
-       workspace and Trend-data choices with plain numbered menus (no Out-GridView dependency),
-       then returns a hashtable the caller applies to its parameters. #>
+       workspace and legacy AV/EDR data choices with plain numbered menus (no Out-GridView
+       dependency), then returns a hashtable the caller applies to its parameters. #>
     param([string]$ScriptRoot)
-    $choices = @{ ConfigPath = $null; CheckVersionOnly = $false; Force = $false; SelectWorkspace = $false; WorkspaceId = $null; TrendCsv = $null }
+    $choices = @{ ConfigPath = $null; CheckVersionOnly = $false; Force = $false; SelectWorkspace = $false; WorkspaceId = $null; LegacyCsv = $null; LegacyProduct = $null; LegacyMode = $null }
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor Cyan
     Write-Host "  Defender Migration Dashboard - guided deploy" -ForegroundColor Cyan
@@ -341,25 +450,48 @@ function Start-DeployWizard {
         $choices.SelectWorkspace = $true   # interactive picker later in the flow
     }
 
-    # 4) Trend data (only when actually deploying)
+    # 4) Legacy AV/EDR data (only when actually deploying)
     if (-not $choices.CheckVersionOnly) {
-        $store = Join-Path $ScriptRoot "trend-inventory.local.csv"
+        $store = Join-Path $ScriptRoot "legacy-inventory.local.csv"
+        if (-not (Test-Path -LiteralPath $store)) {
+            # Honour a store left behind by an earlier Trend-only release.
+            $oldStore = Join-Path $ScriptRoot "trend-inventory.local.csv"
+            if (Test-Path -LiteralPath $oldStore) { $store = $oldStore }
+        }
         $have = 0
-        if (Test-Path -LiteralPath $store) { $have = @(Read-TrendStore -Path $store).Count }
+        $existing = @()
+        if (Test-Path -LiteralPath $store) {
+            $existing = @(Read-LegacyStore -Path $store)
+            $have = $existing.Count
+        }
+        $import = $false
         if ($have -gt 0) {
             Write-Host ""
-            Write-Host "  A saved Trend list with $have device(s) was found - it will be kept and re-pushed." -ForegroundColor Green
-            if (Read-YesNo "Import an additional / updated Trend CSV as well?" $false) {
-                $tc = Read-Host "  Path to the Trend export CSV"
-                if (-not [string]::IsNullOrWhiteSpace($tc) -and (Test-Path -LiteralPath $tc)) { $choices.TrendCsv = $tc.Trim() }
-                elseif (-not [string]::IsNullOrWhiteSpace($tc)) { Write-Host "  '$tc' not found - skipping the import." -ForegroundColor Yellow }
+            Write-Host "  A saved legacy AV/EDR list with $have device(s) was found - it will be kept and re-pushed." -ForegroundColor Green
+            foreach ($b in (Get-LegacyProductBreakdown -Records $existing)) {
+                Write-Host ("    {0,-38} {1,6} devices" -f $b.Product, $b.Devices) -ForegroundColor DarkGray
             }
+            Write-Host "  Migrating from more than one product? Import each vendor's export in turn - every row keeps its own product label." -ForegroundColor DarkGray
+            $import = Read-YesNo "Import an additional / updated legacy AV/EDR export CSV as well?" $false
         } else {
-            if (Read-YesNo "No Trend list has been ingested yet. Import a Trend export CSV now?" $false) {
-                $tc = Read-Host "  Path to the Trend export CSV"
-                if (-not [string]::IsNullOrWhiteSpace($tc) -and (Test-Path -LiteralPath $tc)) { $choices.TrendCsv = $tc.Trim() }
-                elseif (-not [string]::IsNullOrWhiteSpace($tc)) { Write-Host "  '$tc' not found - skipping the import." -ForegroundColor Yellow }
+            $import = Read-YesNo "No legacy AV/EDR list has been ingested yet. Import an export CSV now?" $false
+        }
+        if ($import) {
+            $tc = Read-Host "  Path to the legacy AV/EDR export CSV"
+            if (-not [string]::IsNullOrWhiteSpace($tc) -and (Test-Path -LiteralPath $tc)) {
+                $choices.LegacyCsv = $tc.Trim()
+                $lbl = Read-Host "  Product label for these devices (Enter to auto-detect, e.g. 'Trend Micro Apex One', 'Symantec Endpoint Protection')"
+                if (-not [string]::IsNullOrWhiteSpace($lbl)) { $choices.LegacyProduct = $lbl.Trim() }
+                # Adding a second product's export must never wipe the first one.
+                if ($have -gt 0) {
+                    $mode = Read-Menu "How should this export combine with the saved list?" @(
+                        "Append - keep the saved devices and add these (use when migrating from several products)",
+                        "Replace - this export becomes the entire legacy list"
+                    ) 1
+                    if ($mode -eq 1) { $choices.LegacyMode = 'Append' } else { $choices.LegacyMode = 'Replace' }
+                }
             }
+            elseif (-not [string]::IsNullOrWhiteSpace($tc)) { Write-Host "  '$tc' not found - skipping the import." -ForegroundColor Yellow }
         }
         if (Read-YesNo "Force redeploy even if the workspace is already current?" $false) { $choices.Force = $true }
     }
@@ -367,11 +499,24 @@ function Start-DeployWizard {
     # summary + confirm
     Write-Host ""
     Write-Host "Summary:" -ForegroundColor Cyan
-    Write-Host ("  Auth       : {0}" -f $(if ($choices.ConfigPath) { "service principal ($($choices.ConfigPath))" } else { "interactive Azure CLI" }))
-    Write-Host ("  Action     : {0}" -f $(if ($choices.CheckVersionOnly) { "check for updates (read-only)" } else { "deploy / update in place" }))
-    Write-Host ("  Workspace  : {0}" -f $(if ($choices.WorkspaceId) { $choices.WorkspaceId } elseif ($choices.SelectWorkspace) { "choose interactively" } else { "from config.json" }))
+    $authTxt = "interactive Azure CLI"
+    if ($choices.ConfigPath) { $authTxt = "service principal ($($choices.ConfigPath))" }
+    $actionTxt = "deploy / update in place"
+    if ($choices.CheckVersionOnly) { $actionTxt = "check for updates (read-only)" }
+    $wsTxt = "from config.json"
+    if ($choices.WorkspaceId)        { $wsTxt = $choices.WorkspaceId }
+    elseif ($choices.SelectWorkspace) { $wsTxt = "choose interactively" }
+    Write-Host ("  Auth       : {0}" -f $authTxt)
+    Write-Host ("  Action     : {0}" -f $actionTxt)
+    Write-Host ("  Workspace  : {0}" -f $wsTxt)
     if (-not $choices.CheckVersionOnly) {
-        Write-Host ("  Trend data : {0}" -f $(if ($choices.TrendCsv) { "import $($choices.TrendCsv) (merged with the saved list)" } else { "keep the previously ingested list" }))
+        $legacyTxt = "keep the previously ingested list"
+        if ($choices.LegacyCsv) {
+            $legacyTxt = "import $($choices.LegacyCsv)"
+            if ($choices.LegacyProduct) { $legacyTxt += " as '$($choices.LegacyProduct)'" }
+            if ($choices.LegacyMode)    { $legacyTxt += " ($($choices.LegacyMode))" }
+        }
+        Write-Host ("  Legacy AV  : {0}" -f $legacyTxt)
         Write-Host ("  Force      : {0}" -f $choices.Force)
     }
     if (-not (Read-YesNo "Proceed?" $true)) { Write-Host "Cancelled." -ForegroundColor Yellow; exit 0 }
@@ -795,7 +940,8 @@ function Invoke-RefreshAndWait {
 
 # --------------------------------------------------------------------- live Graph binding
 function Backup-LocalStore {
-    <# Before a deploy overwrites a local data store (Trend list / trend history), copy the
+    <# Before a deploy overwrites a local data store (legacy AV/EDR list / deployment-trend
+       history), copy the
        current file into deploy\backups\ with a timestamped name so previously-ingested data can
        always be recovered. Keeps the most recent -Keep copies per store; older ones are pruned.
        Returns the backup path, or $null when there was nothing to back up. #>
@@ -904,7 +1050,7 @@ function New-TrendSeedOverride {
         throw "This dashboard queries Microsoft Defender live and needs an Entra app registration. Provide graphTenantId/graphClientId/graphClientSecret (or tenantId/clientId/clientSecret) in config.json, or pass -TenantId -ClientId -ClientSecret."
     }
     $kqlPath = Join-Path $PSScriptRoot "assets\DeploymentTrend.kql"
-    if (-not (Test-Path -LiteralPath $kqlPath)) { throw "Trend query asset not found: $kqlPath" }
+    if (-not (Test-Path -LiteralPath $kqlPath)) { throw "Trend-history query asset not found: $kqlPath" }
     $kql = [IO.File]::ReadAllText($kqlPath)
     $histStore = Join-Path $PSScriptRoot "deployment-trend.local.json"
     $history = @(Read-TrendHistoryStore -Path $histStore)
@@ -1085,10 +1231,15 @@ function Set-RefreshSchedule {
     }
 }
 
-# ===================================================================== Trend -> Defender migration
-# Deploy-time ingest of a Trend Micro device export: fuzzy-match its device names against the current
-# Defender inventory and materialise the mapping into the TrendMigration table (same seed pattern as
-# DeploymentTrend / AV posture). Shared by Deploy-Dashboard.ps1 (-TrendCsv) and Import-TrendInventory.ps1.
+# ================================================ legacy AV/EDR -> Defender migration
+# Deploy-time ingest of a device export from whatever antivirus / EDR product is being retired
+# (Trend Micro, Symantec, McAfee/Trellix, Sophos, CrowdStrike, SentinelOne, Kaspersky, ESET,
+# Carbon Black, Cylance, Bitdefender, Webroot, Cisco, Cortex XDR, ... - or an unrecognised
+# product, which still ingests under its own label). Device names are matched against the current
+# Defender inventory and the mapping is materialised into the LegacyAvMigration table (same seed
+# pattern as DeploymentTrend / AV posture). Shared by Deploy-Dashboard.ps1 (-LegacyCsv) and
+# Import-LegacyAvInventory.ps1. An estate may be migrating off SEVERAL products at once, so every
+# ingested row records the product it came from.
 
 function Get-SecurityCenterToken {
     <# App-only (client-credentials) token for the Defender for Endpoint API. #>
@@ -1101,12 +1252,12 @@ function Get-SecurityCenterToken {
 
 function Get-DefenderInventory {
     <# Returns the current Defender device inventory from the SAME paged export endpoint the
-       DeviceHealth table uses (GET /api/machines), so the Trend mapping aligns exactly with what
+       DeviceHealth table uses (GET /api/machines), so the legacy mapping aligns exactly with what
        the dashboard shows. One row per machine: DeviceId, DeviceName, OnboardingStatus, OSPlatform,
        OSVersion. Needs only WindowsDefenderATP Machine.Read.All (app-only). #>
     param([string]$TenantId, [string]$ClientId, [string]$ClientSecret)
     if (-not ($TenantId -and $ClientId -and $ClientSecret)) {
-        throw "Mapping the Trend export to Defender needs an Entra app registration. Provide graphTenantId/graphClientId/graphClientSecret (or tenantId/clientId/clientSecret) in config.json, or pass -TenantId -ClientId -ClientSecret."
+        throw "Mapping the legacy AV/EDR export to Defender needs an Entra app registration. Provide graphTenantId/graphClientId/graphClientSecret (or tenantId/clientId/clientSecret) in config.json, or pass -TenantId -ClientId -ClientSecret."
     }
     $tok = Get-SecurityCenterToken -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
     $headers = @{ Authorization = "Bearer $tok" }
@@ -1117,7 +1268,7 @@ function Get-DefenderInventory {
         foreach ($m in $resp.value) {
             if ([string]::IsNullOrWhiteSpace($m.computerDnsName)) { continue }
             # Align exactly with the DeviceHealth table: drop merged-away and excluded machines so the
-            # Trend mapping cannot match a stale/duplicate record the dashboard itself hides.
+            # legacy mapping cannot match a stale/duplicate record the dashboard itself hides.
             if (-not [string]::IsNullOrWhiteSpace([string]$m.mergedIntoMachineId)) { continue }
             if ([string]$m.isExcluded -eq 'True') { continue }
             $ver = @($m.version, $m.osBuild | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' / '
@@ -1206,12 +1357,82 @@ function Get-NameSimilarity {
     return [int][Math]::Round((1.0 - ($d / [double]$max)) * 100.0)
 }
 
-function Resolve-TrendColumn {
+
+# ===================================================================================
+#  Legacy AV/EDR ingestion - vendor-neutral
+# -----------------------------------------------------------------------------------
+#  These helpers ingest a device export from whatever antivirus / EDR product the
+#  customer is migrating AWAY from, and match it to the current Microsoft Defender
+#  inventory. Nothing here is specific to one vendor: a customer may be retiring
+#  several products at once (for example Trend Micro Apex One on servers and
+#  Symantec Endpoint Protection on laptops), so EVERY ingested row carries the name
+#  of the product it came from in its own LegacyProduct / LegacyVendor fields. That
+#  label survives the merge, the de-duplication, the Defender match and the seed, so
+#  the dashboard can always slice migration progress by source product.
+# ===================================================================================
+
+# Known legacy AV/EDR products. Each entry describes how to recognise an export of
+# that product from its CSV header signature, plus the id columns worth preferring.
+#   Vendor    - company name, used for grouping several products of one vendor
+#   Product   - the specific product label written to every ingested row
+#   Any       - header names of which AT LEAST ONE must be present (a weak signal)
+#   All       - header names that must ALL be present (a strong signal)
+#   IdColumns - product-specific unique-id headers, tried before the generic list
+$script:LegacyAvCatalog = @(
+    @{ Vendor='Trend Micro';   Product='Trend Micro Deep Security'; All=@(); Any=@('host guid','agent guid','deep security manager'); IdColumns=@('Host GUID','Agent GUID') }
+    @{ Vendor='Trend Micro';   Product='Trend Micro Apex One';      All=@(); Any=@('scan method','apex one','officescan','smart scan agent'); IdColumns=@('GUID','Endpoint GUID') }
+    @{ Vendor='Trend Micro';   Product='Trend Micro Vision One';    All=@(); Any=@('endpoint sensor','vision one','xdr endpoint'); IdColumns=@('Agent GUID','Endpoint GUID') }
+    @{ Vendor='Broadcom';      Product='Symantec Endpoint Protection'; All=@(); Any=@('sep version','symantec endpoint','computer id','sepm','sep client'); IdColumns=@('Computer ID','Hardware Key','Unique ID') }
+    @{ Vendor='Trellix';       Product='McAfee ePolicy Orchestrator'; All=@(); Any=@('epo','agent guid (epo)','managed state','epolicy','node name'); IdColumns=@('Agent GUID','Node ID','ParentID') }
+    @{ Vendor='Trellix';       Product='Trellix Endpoint Security'; All=@(); Any=@('trellix','hx agent','agent_id'); IdColumns=@('Agent ID','Agent_ID') }
+    @{ Vendor='Sophos';        Product='Sophos Intercept X';       All=@(); Any=@('sophos','tamper protection enabled','health status'); IdColumns=@('Endpoint ID','Machine ID','id') }
+    @{ Vendor='CrowdStrike';   Product='CrowdStrike Falcon';       All=@(); Any=@('aid','agent id (aid)','cid','falcon','reduced functionality mode'); IdColumns=@('aid','device_id','AID') }
+    @{ Vendor='SentinelOne';   Product='SentinelOne Singularity';  All=@(); Any=@('agent version','network status','sentinelone','mitigation mode','site name'); IdColumns=@('Agent UUID','uuid','Agent ID') }
+    @{ Vendor='Kaspersky';     Product='Kaspersky Endpoint Security'; All=@(); Any=@('kaspersky','klhost','administration server','ksc'); IdColumns=@('Host name','KLHST_WKS_HOSTNAME','Host ID') }
+    @{ Vendor='ESET';          Product='ESET Endpoint Protection'; All=@(); Any=@('eset','esmc','computer uuid','protect server'); IdColumns=@('Computer UUID','UUID') }
+    @{ Vendor='VMware';        Product='Carbon Black';             All=@(); Any=@('carbon black','sensor id','cb defense','sensor version'); IdColumns=@('Sensor ID','device_id','Device ID') }
+    @{ Vendor='Broadcom';      Product='Cylance Protect';          All=@(); Any=@('cylance','zone names','agent version (cylance)'); IdColumns=@('Device Id','Device ID') }
+    @{ Vendor='Bitdefender';   Product='Bitdefender GravityZone';  All=@(); Any=@('bitdefender','gravityzone','endpoint type'); IdColumns=@('Endpoint ID','Machine ID') }
+    @{ Vendor='OpenText';      Product='Webroot SecureAnywhere';   All=@(); Any=@('webroot','secureanywhere','keycode'); IdColumns=@('Device ID','Instance MID') }
+    @{ Vendor='Cisco';         Product='Cisco Secure Endpoint';    All=@(); Any=@('cisco secure endpoint','amp for endpoints','connector guid'); IdColumns=@('Connector GUID','GUID') }
+    @{ Vendor='Palo Alto';     Product='Cortex XDR';               All=@(); Any=@('cortex','endpoint alias','agent id (cortex)'); IdColumns=@('Endpoint ID','Agent ID') }
+    @{ Vendor='Malwarebytes';  Product='Malwarebytes EDR';         All=@(); Any=@('malwarebytes','nebula','endpoint group'); IdColumns=@('Machine ID','Endpoint ID') }
+    @{ Vendor='Check Point';   Product='Check Point Harmony Endpoint'; All=@(); Any=@('harmony','check point','endpoint security client'); IdColumns=@('Device ID','Machine ID') }
+    @{ Vendor='F-Secure';      Product='WithSecure Elements';      All=@(); Any=@('withsecure','f-secure','protection status'); IdColumns=@('Device ID') }
+    @{ Vendor='Sophos';        Product='Sophos Central';           All=@(); Any=@('sophos central'); IdColumns=@('Endpoint ID') }
+)
+
+function Get-LegacyAvCatalog {
+    <# Returns the built-in catalog of recognised legacy AV/EDR products. Exposed so callers
+       (and the docs) can enumerate what auto-detection understands. #>
+    return $script:LegacyAvCatalog
+}
+
+function Resolve-LegacyVendor {
+    <# Maps a free-text product label to its vendor using the catalog. Falls back to matching on a
+       leading vendor word, then to the product label itself, so a hand-typed -SourceProduct such
+       as "Contoso AV" still yields a usable vendor rather than an empty column. #>
+    param([string]$Product)
+    if ([string]::IsNullOrWhiteSpace($Product)) { return "" }
+    $p = $Product.Trim()
+    $lc = $p.ToLowerInvariant()
+    foreach ($e in $script:LegacyAvCatalog) {
+        if ($e.Product.ToLowerInvariant() -eq $lc) { return $e.Vendor }
+    }
+    foreach ($e in $script:LegacyAvCatalog) {
+        if ($lc -like ("*" + $e.Vendor.ToLowerInvariant() + "*")) { return $e.Vendor }
+        if ($lc -like ("*" + $e.Product.ToLowerInvariant() + "*")) { return $e.Vendor }
+    }
+    return $p
+}
+
+function Resolve-CsvColumn {
     <# Picks the first header from a candidate list that matches (case/space-insensitive), else the
        first header whose name matches the -Fallback regex, else $null. #>
     param([string[]]$Columns, [string[]]$Candidates, [string]$Fallback)
     foreach ($c in $Candidates) {
-        $hit = $Columns | Where-Object { $_.Trim().ToLowerInvariant() -eq $c.ToLowerInvariant() } | Select-Object -First 1
+        if ([string]::IsNullOrWhiteSpace($c)) { continue }
+        $hit = $Columns | Where-Object { $_.Trim().ToLowerInvariant() -eq $c.Trim().ToLowerInvariant() } | Select-Object -First 1
         if ($hit) { return $hit }
     }
     if ($Fallback) {
@@ -1221,168 +1442,311 @@ function Resolve-TrendColumn {
     return $null
 }
 
-function Get-TrendSourceFromColumns {
-    <# Infers the Trend product from an export's header signature. Deep Security exposes 'Host GUID'
-       / 'Agent GUID'; Apex One exposes a bare 'GUID' alongside 'Endpoint'/'Scan Method'. Falls back
-       to the generic label 'Trend'. #>
+function Get-LegacyProductFromColumns {
+    <# Infers which legacy AV/EDR product an export came from, using the catalog's header
+       signatures. Scores every catalog entry (all 'All' headers required; each 'Any' hit adds a
+       point) and returns the best-scoring product, or the neutral label 'Legacy AV/EDR' when
+       nothing matches - so an unknown vendor's export still ingests and is still labelled. #>
     param([string[]]$Columns)
-    $lc = $Columns | ForEach-Object { $_.Trim().ToLowerInvariant() }
-    if ($lc -contains 'host guid' -or $lc -contains 'agent guid') { return 'Deep Security' }
-    if ($lc -contains 'guid' -and ($lc -contains 'endpoint' -or $lc -contains 'scan method')) { return 'Apex One' }
-    return 'Trend'
+    $lc = @($Columns | ForEach-Object { $_.Trim().ToLowerInvariant() })
+    $bestScore = 0
+    $best = $null
+    foreach ($e in $script:LegacyAvCatalog) {
+        $ok = $true
+        foreach ($req in $e.All) { if ($lc -notcontains $req) { $ok = $false; break } }
+        if (-not $ok) { continue }
+        $score = @($e.All).Count * 2
+        foreach ($a in $e.Any) {
+            foreach ($h in $lc) { if ($h -eq $a -or $h -like "*$a*") { $score++; break } }
+        }
+        if ($score -gt $bestScore) { $bestScore = $score; $best = $e }
+    }
+    if ($best -and $bestScore -gt 0) { return $best.Product }
+    return 'Legacy AV/EDR'
 }
 
-function Get-TrendDeviceRecords {
-    <# Reads a Trend Micro CSV export (native Apex One / Deep Security export, or the normalised
-       TrendId,DeviceName,TrendSource template) and returns one record per row with the minimum
-       fields the dashboard ingests:
+function Get-LegacyIdColumnCandidates {
+    <# Id-column names to try for a detected product: the product's own preferred ids first, then a
+       generic cross-vendor list. #>
+    param([string]$Product)
+    $pref = @()
+    if ($Product) {
+        foreach ($e in $script:LegacyAvCatalog) {
+            if ($e.Product -eq $Product) { $pref = @($e.IdColumns); break }
+        }
+    }
+    return @($pref + @(
+        'LegacyId','TrendId','Host GUID','Endpoint GUID','Agent GUID','Computer ID','Sensor ID','Connector GUID',
+        'Agent UUID','Computer UUID','Endpoint ID','Machine ID','Device ID','Device Id','device_id','Hardware Key',
+        'Instance ID','Agent ID','aid','AID','GUID','UUID','Host ID','Machine GUID','Unique ID','id'))
+}
 
-         TrendId     - the tool's own unique device identifier (Apex One 'GUID', Deep Security
-                       'Host GUID' preferred over 'Agent GUID'), used as the de-duplication key.
-         DeviceName  - the host/endpoint name, used to match against the Defender inventory.
-         TrendSource - which Trend product the row came from (auto-detected, or -Source override).
+function Get-LegacyDeviceRecords {
+    <# Reads any legacy AV/EDR CSV export - a native vendor export, or the normalised
+       LegacyId,DeviceName,LegacyProduct template - and returns one record per row with the
+       minimum fields the dashboard ingests:
 
-       The host-name and id columns are auto-detected from common Trend header names; -Source
-       overrides the auto-detected product label. Rows with no device name are dropped. #>
-    param([string]$TrendCsv, [string]$Source)
-    if (-not (Test-Path -LiteralPath $TrendCsv)) { throw "Trend CSV not found: $TrendCsv" }
-    $rows = @(Import-Csv -LiteralPath $TrendCsv)
+         LegacyId      - the source tool's own unique device identifier, used as the de-dup key.
+         DeviceName    - the host/endpoint name, matched against the Defender inventory.
+         LegacyProduct - WHICH product the row came from. Always populated on every row, so a
+                         customer migrating from several tools keeps them distinguishable.
+         LegacyVendor  - the vendor behind that product, for higher-level grouping.
+
+       Detection order for the product label: an explicit -SourceProduct override, then a
+       per-row LegacyProduct/TrendSource column in the file itself (so a hand-merged multi-tool
+       CSV keeps its per-row labels), then auto-detection from the header signature. #>
+    param([string]$CsvPath, [string]$SourceProduct, [string]$SourceVendor)
+    if (-not (Test-Path -LiteralPath $CsvPath)) { throw "Legacy AV/EDR export CSV not found: $CsvPath" }
+    $rows = @(Import-Csv -LiteralPath $CsvPath)
     if ($rows.Count -eq 0) { return @() }
-    $cols = $rows[0].PSObject.Properties.Name
+    $cols = @($rows[0].PSObject.Properties.Name)
 
-    $nameCol = Resolve-TrendColumn -Columns $cols -Fallback 'host|endpoint|computer|device|machine|name' -Candidates @(
+    $nameCol = Resolve-CsvColumn -Columns $cols -Fallback 'host|endpoint|computer|device|machine|node|name' -Candidates @(
         'DeviceName','Endpoint Name','Endpoint','Host Name','Hostname','Host','Computer Name','Computer',
-        'Device Name','Device','Machine Name','Machine','Agent Host Name','Managed Server','Name')
+        'Device Name','Device','Machine Name','Machine','Agent Host Name','Node Name','Managed Server',
+        'Sensor Name','Client Name','Name')
     if (-not $nameCol) { $nameCol = $cols[0] }
 
-    # Prefer a host/machine-level GUID (stable across agent reinstalls) over an agent-install GUID.
-    $idCol = Resolve-TrendColumn -Columns $cols -Fallback 'guid|uuid|\bid\b' -Candidates @(
-        'TrendId','Host GUID','GUID','Agent GUID','Endpoint GUID','Instance ID','UUID','Host ID','Agent ID','Machine GUID')
+    # A per-row product column keeps multi-tool exports separable. TrendSource is accepted for
+    # backwards compatibility with stores written by earlier versions of this dashboard.
+    $prodCol   = Resolve-CsvColumn -Columns $cols -Candidates @('LegacyProduct','TrendSource','SourceProduct','Product','AV Product','Security Product')
+    $vendorCol = Resolve-CsvColumn -Columns $cols -Candidates @('LegacyVendor','Vendor','Manufacturer')
 
-    $src = if ($Source) { $Source }
-           else {
-               $srcCol = Resolve-TrendColumn -Columns $cols -Candidates @('TrendSource')
-               if ($srcCol) { $null } else { Get-TrendSourceFromColumns -Columns $cols }
-           }
+    # Detected product drives both the fallback label and the preferred id columns.
+    $detected = Get-LegacyProductFromColumns -Columns $cols
+    $idCol = Resolve-CsvColumn -Columns $cols -Fallback 'guid|uuid|\bid\b' -Candidates (Get-LegacyIdColumnCandidates -Product $detected)
 
-    Write-Ok ("Trend export: name column '{0}', id column '{1}'{2} ({3} rows)" -f `
-        $nameCol, ($idCol ?? '(none)'), $(if ($src) { ", source '$src'" } else { '' }), $rows.Count)
+    # An explicit override always wins; otherwise fall back to the detected product per row.
+    $fallbackProduct = $SourceProduct
+    if (-not $fallbackProduct) { $fallbackProduct = $detected }
+
+    $idLabel = '(none)'
+    if ($idCol) { $idLabel = $idCol }
+    $prodLabel = $fallbackProduct
+    if ($prodCol -and -not $SourceProduct) { $prodLabel = "per-row column '$prodCol'" }
+    Write-Ok ("Legacy export: name column '{0}', id column '{1}', product '{2}' ({3} rows)" -f $nameCol, $idLabel, $prodLabel, $rows.Count)
 
     $out = New-Object System.Collections.ArrayList
     foreach ($r in $rows) {
-        $name = if ($nameCol) { [string]$r.$nameCol } else { "" }
+        $name = ""
+        if ($nameCol) { $name = [string]$r.$nameCol }
         if ([string]::IsNullOrWhiteSpace($name)) { continue }
-        $id = if ($idCol) { [string]$r.$idCol } else { "" }
-        $rowSrc = if ($src) { $src }
-                  elseif ($r.PSObject.Properties.Name -contains 'TrendSource') { [string]$r.TrendSource }
-                  else { 'Trend' }
+
+        $id = ""
+        if ($idCol) { $id = [string]$r.$idCol }
+
+        # Product label, resolved per row so one file may legitimately carry several products.
+        $rowProduct = ""
+        if ($SourceProduct) { $rowProduct = $SourceProduct }
+        elseif ($prodCol)   { $rowProduct = [string]$r.$prodCol }
+        if ([string]::IsNullOrWhiteSpace($rowProduct)) { $rowProduct = $fallbackProduct }
+        if ([string]::IsNullOrWhiteSpace($rowProduct)) { $rowProduct = 'Legacy AV/EDR' }
+
+        $rowVendor = ""
+        if ($SourceVendor)  { $rowVendor = $SourceVendor }
+        elseif ($vendorCol) { $rowVendor = [string]$r.$vendorCol }
+        if ([string]::IsNullOrWhiteSpace($rowVendor)) { $rowVendor = Resolve-LegacyVendor -Product $rowProduct }
+
         [void]$out.Add([pscustomobject]@{
-            TrendId     = ($id).Trim()
-            DeviceName  = ($name).Trim()
-            TrendSource = ($rowSrc).Trim()
+            LegacyId      = $id.Trim()
+            DeviceName    = $name.Trim()
+            LegacyProduct = $rowProduct.Trim()
+            LegacyVendor  = $rowVendor.Trim()
         })
     }
     return $out.ToArray()
 }
 
-function Get-TrendDeviceNames {
-    <# Backward-compatible helper: returns just the device/host names from a Trend export. #>
-    param([string]$TrendCsv)
-    return @(Get-TrendDeviceRecords -TrendCsv $TrendCsv | ForEach-Object { $_.DeviceName })
+function Get-LegacyDeviceNames {
+    <# Convenience helper: just the device/host names from a legacy AV/EDR export. #>
+    param([string]$CsvPath)
+    return @(Get-LegacyDeviceRecords -CsvPath $CsvPath | ForEach-Object { $_.DeviceName })
 }
 
-function Get-TrendDedupKey {
-    <# De-duplication key for a Trend record: the tool's unique id when present (that is the
-       requested "unique ID of the Trend tool"), else a normalised host|source fallback so exports
-       without a usable id still de-duplicate sensibly. #>
+function Get-LegacyRecordField {
+    <# Reads a field from a record, tolerating both the current LegacyXxx names and the legacy
+       TrendXxx names written by earlier versions of this dashboard. #>
+    param($Record, [string]$Name, [string]$Legacy, [string]$Default = "")
+    if ($null -eq $Record) { return $Default }
+    $props = $Record.PSObject.Properties
+    if ($props[$Name] -and -not [string]::IsNullOrWhiteSpace([string]$Record.$Name)) { return [string]$Record.$Name }
+    if ($Legacy -and $props[$Legacy] -and -not [string]::IsNullOrWhiteSpace([string]$Record.$Legacy)) { return [string]$Record.$Legacy }
+    return $Default
+}
+
+function Get-LegacyDedupKey {
+    <# De-duplication key for a legacy record: the source tool's unique id when present, else a
+       normalised host|product fallback so exports without a usable id still de-duplicate.
+       The product is part of the fallback key on purpose: the same host reported by two different
+       legacy tools is two migration facts, not one. #>
     param($Record)
-    $id = if ($Record.PSObject.Properties.Name -contains 'TrendId') { [string]$Record.TrendId } else { "" }
+    $id = Get-LegacyRecordField -Record $Record -Name 'LegacyId' -Legacy 'TrendId'
     if (-not [string]::IsNullOrWhiteSpace($id)) { return "id:" + $id.Trim().ToLowerInvariant().Trim('{','}') }
-    $host2 = Get-NormalizedDeviceName ([string]$Record.DeviceName)
-    $dom  = Get-NormalizedDomainSuffix ([string]$Record.DeviceName)
-    $src  = if ($Record.PSObject.Properties.Name -contains 'TrendSource') { ([string]$Record.TrendSource).ToLowerInvariant() } else { "" }
-    return "name:$host2|$dom|$src"
+    $shortName = Get-NormalizedDeviceName ([string]$Record.DeviceName)
+    $domain    = Get-NormalizedDomainSuffix ([string]$Record.DeviceName)
+    $product   = (Get-LegacyRecordField -Record $Record -Name 'LegacyProduct' -Legacy 'TrendSource').ToLowerInvariant()
+    return "name:$shortName|$domain|$product"
 }
 
-function Read-TrendStore {
-    <# Reads the local Trend inventory master store (git-ignored CSV of previously ingested devices).
-       Returns an empty array when the store does not exist. #>
+function Read-LegacyStore {
+    <# Reads the local legacy-inventory master store (git-ignored CSV of previously ingested
+       devices). Accepts stores written by earlier Trend-only versions and upgrades their columns
+       in place, so an existing deployment keeps its accumulated history. Returns an empty array
+       when the store does not exist. #>
     param([string]$Path)
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return @() }
     $rows = @(Import-Csv -LiteralPath $Path)
     $out = New-Object System.Collections.ArrayList
     foreach ($r in $rows) {
         if ([string]::IsNullOrWhiteSpace([string]$r.DeviceName)) { continue }
+        $product = Get-LegacyRecordField -Record $r -Name 'LegacyProduct' -Legacy 'TrendSource' -Default 'Legacy AV/EDR'
+        $vendor  = Get-LegacyRecordField -Record $r -Name 'LegacyVendor'
+        if ([string]::IsNullOrWhiteSpace($vendor)) { $vendor = Resolve-LegacyVendor -Product $product }
         [void]$out.Add([pscustomobject]@{
-            TrendId     = [string]$r.TrendId
-            DeviceName  = [string]$r.DeviceName
-            TrendSource = [string]$r.TrendSource
-            FirstSeen   = if ($r.PSObject.Properties.Name -contains 'FirstSeen') { [string]$r.FirstSeen } else { "" }
+            LegacyId      = Get-LegacyRecordField -Record $r -Name 'LegacyId' -Legacy 'TrendId'
+            DeviceName    = [string]$r.DeviceName
+            LegacyProduct = $product
+            LegacyVendor  = $vendor
+            FirstSeen     = Get-LegacyRecordField -Record $r -Name 'FirstSeen'
         })
     }
     return $out.ToArray()
 }
 
-function Merge-TrendStore {
-    <# Merges freshly parsed Trend records into the existing master store.
-         -Mode Replace : the new export becomes the whole list (de-duplicated on the Trend id).
-         -Mode Append  : keep everything already ingested and add only records whose Trend id
-                         (or host|source fallback) is not already present.
+function Merge-LegacyStore {
+    <# Merges freshly parsed legacy records into the existing master store.
+         -Mode Replace : the new export becomes the whole list (de-duplicated on the source id).
+         -Mode Append  : keep everything already ingested and add only records whose id (or
+                         host|product fallback) is not already present. This is the mode to use
+                         when migrating from SEVERAL products: ingest each vendor's export in
+                         turn with -Mode Append and every row keeps its own product label.
        Returns the merged, de-duplicated record set. #>
     param([object[]]$Existing, [object[]]$New, [ValidateSet('Replace','Append')][string]$Mode = 'Replace')
     $now = (Get-Date).ToString('yyyy-MM-dd')
     $result = New-Object System.Collections.ArrayList
     $seen = @{}
-    function _add($rec, $firstSeen) {
-        $k = Get-TrendDedupKey $rec
+    $addRecord = {
+        param($rec, $firstSeen)
+        $k = Get-LegacyDedupKey $rec
         if ($seen.ContainsKey($k)) { return }
         $seen[$k] = $true
+        $product = Get-LegacyRecordField -Record $rec -Name 'LegacyProduct' -Legacy 'TrendSource' -Default 'Legacy AV/EDR'
+        $vendor  = Get-LegacyRecordField -Record $rec -Name 'LegacyVendor'
+        if ([string]::IsNullOrWhiteSpace($vendor)) { $vendor = Resolve-LegacyVendor -Product $product }
+        $seenDate = $firstSeen
+        if ([string]::IsNullOrWhiteSpace($seenDate)) { $seenDate = $now }
         [void]$result.Add([pscustomobject]@{
-            TrendId     = [string]$rec.TrendId
-            DeviceName  = [string]$rec.DeviceName
-            TrendSource = [string]$rec.TrendSource
-            FirstSeen   = if ($firstSeen) { $firstSeen } else { $now }
+            LegacyId      = Get-LegacyRecordField -Record $rec -Name 'LegacyId' -Legacy 'TrendId'
+            DeviceName    = [string]$rec.DeviceName
+            LegacyProduct = $product
+            LegacyVendor  = $vendor
+            FirstSeen     = $seenDate
         })
     }
     if ($Mode -eq 'Append') {
-        foreach ($e in $Existing) { _add $e ($(if ($e.PSObject.Properties.Name -contains 'FirstSeen' -and $e.FirstSeen) { $e.FirstSeen } else { $now })) }
+        foreach ($e in $Existing) {
+            & $addRecord $e (Get-LegacyRecordField -Record $e -Name 'FirstSeen' -Default $now)
+        }
     }
-    foreach ($n in $New) { _add $n $now }
+    foreach ($n in $New) { & $addRecord $n $now }
     return $result.ToArray()
 }
 
-function Write-TrendStore {
-    <# Persists the master store to CSV (TrendId,DeviceName,TrendSource,FirstSeen). #>
+function Write-LegacyStore {
+    <# Persists the master store to CSV (LegacyId,DeviceName,LegacyProduct,LegacyVendor,FirstSeen). #>
     param([string]$Path, [object[]]$Records)
     if (-not $Path) { return }
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     if (-not $Records -or $Records.Count -eq 0) {
-        Set-Content -LiteralPath $Path -Value "TrendId,DeviceName,TrendSource,FirstSeen" -Encoding UTF8
+        Set-Content -LiteralPath $Path -Value "LegacyId,DeviceName,LegacyProduct,LegacyVendor,FirstSeen" -Encoding UTF8
         return
     }
-    $Records | Select-Object TrendId, DeviceName, TrendSource, FirstSeen |
+    $Records | Select-Object LegacyId, DeviceName, LegacyProduct, LegacyVendor, FirstSeen |
         Export-Csv -LiteralPath $Path -NoTypeInformation -Encoding UTF8
 }
 
-function Get-TrendDefenderMapping {
-    <# Core matcher. Requires an EXACT normalised short-hostname match between each Trend device and a
-       Defender device; fuzzy tolerance is applied ONLY to the DNS domain suffix. So
-       'host.contoso.com' still matches 'host.contoso.local' (same host, near domain), a short name
-       'host' matches any 'host.<domain>', but two different hostnames never fuzzy-match each other.
-       De-duplication is keyed on the Trend tool's unique id (falling back to host|source when no id
-       is present). Accepts either -TrendRecords (objects with TrendId/DeviceName/TrendSource) or,
-       for backward compatibility, a flat -TrendNames string array. Returns one PSCustomObject per
-       de-duplicated Trend device with its best Defender match. #>
-    param([object[]]$TrendRecords, [string[]]$TrendNames, [object[]]$Inventory, [int]$MatchThreshold = 82)
+function Get-LegacyProductBreakdown {
+    <# Summarises a record or mapping set by legacy product, so the console output tells the
+       operator exactly what came from which tool. Returns rows of
+       Product / Vendor / Devices / Migrated / Pending / NotFound (the last three are 0 when the
+       input is a plain inventory rather than a mapping). #>
+    param([object[]]$Records)
+    $groups = [ordered]@{}
+    foreach ($r in $Records) {
+        if ($null -eq $r) { continue }
+        $p = Get-LegacyRecordField -Record $r -Name 'LegacyProduct' -Legacy 'TrendSource' -Default 'Legacy AV/EDR'
+        if (-not $groups.Contains($p)) {
+            $groups[$p] = [pscustomobject]@{
+                Product  = $p
+                Vendor   = Get-LegacyRecordField -Record $r -Name 'LegacyVendor' -Default (Resolve-LegacyVendor -Product $p)
+                Devices  = 0
+                Migrated = 0
+                Pending  = 0
+                NotFound = 0
+            }
+        }
+        $g = $groups[$p]
+        $g.Devices++
+        $status = Get-LegacyRecordField -Record $r -Name 'MigrationStatus'
+        switch ($status) {
+            'Migrated to Defender'    { $g.Migrated++ }
+            'Matched - not onboarded' { $g.Pending++ }
+            'Not found in Defender'   { $g.NotFound++ }
+        }
+    }
+    return @($groups.Values)
+}
+
+function Write-LegacyProductBreakdown {
+    <# Prints the per-product breakdown. With several legacy tools in flight this is the line the
+       operator actually needs: which product still has devices left to migrate. #>
+    param([object[]]$Records, [switch]$WithStatus)
+    $rows = @(Get-LegacyProductBreakdown -Records $Records)
+    if ($rows.Count -eq 0) { return }
+    Write-Ok "By legacy product:"
+    foreach ($r in ($rows | Sort-Object -Property @{ Expression = { $_.Devices }; Descending = $true })) {
+        if ($WithStatus) {
+            $pct = 0
+            if ($r.Devices -gt 0) { $pct = [math]::Round(100.0 * $r.Migrated / $r.Devices, 1) }
+            Write-Ok ("  {0,-38} {1,6} devices | {2,6} migrated ({3}%) | {4,5} pending | {5,5} not found" -f `
+                $r.Product, $r.Devices, $r.Migrated, $pct, $r.Pending, $r.NotFound)
+        } else {
+            Write-Ok ("  {0,-38} {1,6} devices" -f $r.Product, $r.Devices)
+        }
+    }
+}
+
+function Get-LegacyDefenderMapping {
+    <# Core matcher. Requires an EXACT normalised short-hostname match between each legacy device
+       and a Defender device; fuzzy tolerance is applied ONLY to the DNS domain suffix. So
+       'host.contoso.com' still matches 'host.contoso.local', a short name 'host' matches any
+       'host.<domain>', but two different hostnames never fuzzy-match each other.
+
+       De-duplication is keyed on the source tool's unique id (falling back to host|product when
+       no id is present). Every output row carries LegacyProduct and LegacyVendor, so migration
+       progress stays attributable to the specific tool it came from even when the estate is being
+       migrated off several products at once.
+
+       Accepts -LegacyRecords (objects with LegacyId/DeviceName/LegacyProduct) or, for backward
+       compatibility, a flat -LegacyNames string array. #>
+    param([object[]]$LegacyRecords, [string[]]$LegacyNames, [object[]]$Inventory, [int]$MatchThreshold = 82,
+          [string]$DefaultProduct = 'Legacy AV/EDR')
     if ($MatchThreshold -lt 0)   { $MatchThreshold = 0 }
     if ($MatchThreshold -gt 100) { $MatchThreshold = 100 }
-    if (-not $TrendRecords -or $TrendRecords.Count -eq 0) {
-        $TrendRecords = @($TrendNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-            ForEach-Object { [pscustomobject]@{ TrendId = ""; DeviceName = [string]$_; TrendSource = "Trend" } })
+    if (-not $LegacyRecords -or $LegacyRecords.Count -eq 0) {
+        $LegacyRecords = @($LegacyNames | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            ForEach-Object {
+                [pscustomobject]@{
+                    LegacyId      = ""
+                    DeviceName    = [string]$_
+                    LegacyProduct = $DefaultProduct
+                    LegacyVendor  = (Resolve-LegacyVendor -Product $DefaultProduct)
+                }
+            })
     }
     # Index Defender devices by normalised short hostname -> every device that shares that hostname
-    # (there can be several across different domains; the domain suffix decides which one wins below).
+    # (there can be several across different domains; the domain suffix decides which one wins).
     $byHost = @{}
     foreach ($d in $Inventory) {
         $h = Get-NormalizedDeviceName $d.DeviceName
@@ -1392,30 +1756,34 @@ function Get-TrendDefenderMapping {
     }
     $seen = @{}
     $out = New-Object System.Collections.ArrayList
-    foreach ($rec in $TrendRecords) {
-        $raw      = [string]$rec.DeviceName
-        $trendId  = if ($rec.PSObject.Properties.Name -contains 'TrendId') { [string]$rec.TrendId } else { "" }
-        $trendSrc = if ($rec.PSObject.Properties.Name -contains 'TrendSource') { [string]$rec.TrendSource } else { "Trend" }
-        $thost = Get-NormalizedDeviceName $raw
-        $tdom  = Get-NormalizedDomainSuffix $raw
-        if ($thost -eq "") { continue }
-        $dedup = Get-TrendDedupKey $rec
+    foreach ($rec in $LegacyRecords) {
+        $raw     = [string]$rec.DeviceName
+        $legId   = Get-LegacyRecordField -Record $rec -Name 'LegacyId' -Legacy 'TrendId'
+        $product = Get-LegacyRecordField -Record $rec -Name 'LegacyProduct' -Legacy 'TrendSource' -Default $DefaultProduct
+        $vendor  = Get-LegacyRecordField -Record $rec -Name 'LegacyVendor'
+        if ([string]::IsNullOrWhiteSpace($vendor)) { $vendor = Resolve-LegacyVendor -Product $product }
+        $shortName = Get-NormalizedDeviceName $raw
+        $domain    = Get-NormalizedDomainSuffix $raw
+        if ($shortName -eq "") { continue }
+        $dedup = Get-LegacyDedupKey $rec
         if ($seen.ContainsKey($dedup)) { continue }
         $seen[$dedup] = $true
+
         $match = $null; $score = 0; $mtype = "Unmatched"
-        if ($byHost.ContainsKey($thost)) {
+        if ($byHost.ContainsKey($shortName)) {
             # Hostname matches exactly; the only fuzzy decision left is which candidate's DNS domain
             # is closest. An identical or absent domain is an exact match; a different domain is
             # accepted only when it stays within the fuzzy tolerance.
             $best = -1; $bestDev = $null; $bestType = "Fuzzy"
-            foreach ($d in $byHost[$thost]) {
+            foreach ($d in $byHost[$shortName]) {
                 $ddom = Get-NormalizedDomainSuffix $d.DeviceName
-                if ($tdom -eq $ddom -or $tdom -eq "" -or $ddom -eq "") { $s = 100; $type = "Exact" }
-                else { $s = Get-NameSimilarity -A $tdom -B $ddom -MinScore $MatchThreshold; $type = "Fuzzy" }
-                if (($s -gt $best) -or
-                    ($s -eq $best -and [string]$d.OnboardingStatus -eq "Onboarded" -and [string]$bestDev.OnboardingStatus -ne "Onboarded")) {
-                    $best = $s; $bestDev = $d; $bestType = $type
+                if ($domain -eq $ddom -or $domain -eq "" -or $ddom -eq "") { $s = 100; $type = "Exact" }
+                else { $s = Get-NameSimilarity -A $domain -B $ddom -MinScore $MatchThreshold; $type = "Fuzzy" }
+                $better = $s -gt $best
+                if (-not $better -and $s -eq $best -and $null -ne $bestDev) {
+                    $better = ([string]$d.OnboardingStatus -eq "Onboarded" -and [string]$bestDev.OnboardingStatus -ne "Onboarded")
                 }
+                if ($better) { $best = $s; $bestDev = $d; $bestType = $type }
             }
             if ($bestDev -and ($bestType -eq "Exact" -or $best -ge $MatchThreshold)) {
                 $match = $bestDev; $score = $best; $mtype = $bestType
@@ -1423,13 +1791,16 @@ function Get-TrendDefenderMapping {
                 $score = [Math]::Max(0, $best)
             }
         }
+
         if ($match) {
             $onboard = [string]$match.OnboardingStatus
-            $status = if ($onboard -eq "Onboarded") { "Migrated to Defender" } else { "Matched - not onboarded" }
+            $status = "Matched - not onboarded"
+            if ($onboard -eq "Onboarded") { $status = "Migrated to Defender" }
             [void]$out.Add([pscustomobject]@{
-                TrendId            = $trendId
-                TrendSource        = $trendSrc
-                TrendDeviceName    = $raw
+                LegacyId           = $legId
+                LegacyProduct      = $product
+                LegacyVendor       = $vendor
+                LegacyDeviceName   = $raw
                 DefenderDeviceName = [string]$match.DeviceName
                 DeviceId           = [string]$match.DeviceId
                 MatchType          = $mtype
@@ -1441,9 +1812,10 @@ function Get-TrendDefenderMapping {
             })
         } else {
             [void]$out.Add([pscustomobject]@{
-                TrendId            = $trendId
-                TrendSource        = $trendSrc
-                TrendDeviceName    = $raw
+                LegacyId           = $legId
+                LegacyProduct      = $product
+                LegacyVendor       = $vendor
+                LegacyDeviceName   = $raw
                 DefenderDeviceName = ""
                 DeviceId           = ""
                 MatchType          = "Unmatched"
@@ -1458,8 +1830,8 @@ function Get-TrendDefenderMapping {
     return $out.ToArray()
 }
 
-function ConvertTo-TrendMigrationSeed {
-    <# Serialises mapping objects to the compact JSON array the TrendMigration partition expects. #>
+function ConvertTo-LegacyMigrationSeed {
+    <# Serialises mapping objects to the compact JSON array the LegacyAvMigration partition expects. #>
     param([object[]]$Mapping)
     if (-not $Mapping -or $Mapping.Count -eq 0) { return "[]" }
     $json = ($Mapping | ConvertTo-Json -Depth 4 -Compress)
@@ -1467,58 +1839,75 @@ function ConvertTo-TrendMigrationSeed {
     return $json
 }
 
-function New-TrendMigrationSeedOverride {
-    <# Generates the Trend->Defender mapping at deploy time and returns a Get-Parts override that
-       embeds it in the TrendMigration table (__TRENDMIGRATION_SEED_B64__). Returns $null when the
-       model has no TrendMigration placeholder. When -TrendCsv is not supplied, injects an empty
-       seed so the table exists but has no rows. On any failure it injects an empty seed and warns,
-       so deployment still succeeds.
+function New-LegacyMigrationSeedOverride {
+    <# Generates the legacy-AV -> Defender mapping at deploy time and returns a Get-Parts override
+       that embeds it in the LegacyAvMigration table (__LEGACYMIGRATION_SEED_B64__). Returns $null
+       when the model has no placeholder. When -LegacyCsv is not supplied, the previously ingested
+       store is re-pushed (so an update-in-place never silently empties the table); when there is
+       no store either, an empty seed is injected so the table exists but has no rows. On any
+       failure it injects an empty seed and warns, so deployment still succeeds.
 
-       -TrendMode Replace (default) uses the supplied export as the whole Trend list; -TrendMode
-       Append merges the export into the git-ignored master store (-InventoryStore), de-duplicating
-       on the Trend tool's unique id so only new devices are added. The full (merged) list is then
-       matched against the current Defender inventory. #>
+       -LegacyMode Replace (default) uses the supplied export as the whole legacy list;
+       -LegacyMode Append merges the export into the git-ignored master store (-InventoryStore),
+       de-duplicating on the source tool's unique id. Append is the mode for estates migrating off
+       SEVERAL products: run it once per vendor export and each row keeps its own product label. #>
     param([string]$ModelDir, [string]$TenantId, [string]$ClientId, [string]$ClientSecret,
-          [string]$TrendCsv, [int]$MatchThreshold = 82,
-          [ValidateSet('Replace','Append')][string]$TrendMode = 'Replace',
-          [string]$InventoryStore, [string]$TrendSource)
-    $path = Join-Path $ModelDir "definition\tables\TrendMigration.tmdl"
+          [string]$LegacyCsv, [int]$MatchThreshold = 82,
+          [ValidateSet('Replace','Append')][string]$LegacyMode = 'Replace',
+          [string]$InventoryStore, [string]$SourceProduct, [string]$SourceVendor)
+    $path = Join-Path $ModelDir "definition\tables\LegacyAvMigration.tmdl"
     if (-not (Test-Path -LiteralPath $path)) { return $null }
     $txt = Get-Content -LiteralPath $path -Raw
-    if ($txt -notmatch '__TRENDMIGRATION_SEED_B64__') { return $null }
-    if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "trend-inventory.local.csv" }
+    if ($txt -notmatch '__LEGACYMIGRATION_SEED_B64__') { return $null }
+    if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "legacy-inventory.local.csv" }
     $seedJson = "[]"
     $storeExists = Test-Path -LiteralPath $InventoryStore
-    if (-not $TrendCsv -and -not $storeExists) {
-        Write-Warn2 "No -TrendCsv supplied and no saved Trend list found - TrendMigration will be empty. Pass -TrendCsv <trend-export.csv> to populate the migration mapping."
+    if (-not $LegacyCsv -and -not $storeExists) {
+        Write-Warn2 "No -LegacyCsv supplied and no saved legacy AV/EDR list found - the migration table will be empty. Pass -LegacyCsv <export.csv> to populate it."
     } else {
         try {
-            $existing = Read-TrendStore -Path $InventoryStore
-            if ($TrendCsv) {
-                $newRecs = @(Get-TrendDeviceRecords -TrendCsv $TrendCsv -Source $TrendSource)
-                $merged  = Merge-TrendStore -Existing $existing -New $newRecs -Mode $TrendMode
-                if ($merged.Count -eq 0) { throw "no device names found in the Trend export or master store" }
+            $existing = Read-LegacyStore -Path $InventoryStore
+            if ($LegacyCsv) {
+                $newRecs = @(Get-LegacyDeviceRecords -CsvPath $LegacyCsv -SourceProduct $SourceProduct -SourceVendor $SourceVendor)
+                $merged  = Merge-LegacyStore -Existing $existing -New $newRecs -Mode $LegacyMode
+                if ($merged.Count -eq 0) { throw "no device names found in the legacy export or master store" }
                 Backup-LocalStore -Path $InventoryStore | Out-Null
-                Write-TrendStore -Path $InventoryStore -Records $merged
-                Write-Ok "Trend list ($TrendMode): ingested $($newRecs.Count) from export; $($merged.Count) unique devices now in the store ($InventoryStore)"
+                Write-LegacyStore -Path $InventoryStore -Records $merged
+                Write-Ok "Legacy list ($LegacyMode): ingested $($newRecs.Count) from export; $($merged.Count) unique devices now in the store ($InventoryStore)"
             } else {
-                # No new export on this run: re-use (re-push) the previously ingested Trend list
-                # instead of emptying it, so an update-in-place preserves the ingested data.
+                # No new export on this run: re-use (re-push) the previously ingested list instead
+                # of emptying it, so an update-in-place preserves the ingested data.
                 $merged = $existing
-                if ($merged.Count -eq 0) { throw "the saved Trend list is empty" }
-                Write-Ok "Trend list preserved: re-using $($merged.Count) devices previously ingested into the store ($InventoryStore)"
+                if ($merged.Count -eq 0) { throw "the saved legacy AV/EDR list is empty" }
+                Write-Ok "Legacy list preserved: re-using $($merged.Count) devices previously ingested into the store ($InventoryStore)"
             }
+            Write-LegacyProductBreakdown -Records $merged
             $inv = Get-DefenderInventory -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
-            $map = Get-TrendDefenderMapping -TrendRecords $merged -Inventory $inv -MatchThreshold $MatchThreshold
-            $seedJson = ConvertTo-TrendMigrationSeed -Mapping $map
+            $map = Get-LegacyDefenderMapping -LegacyRecords $merged -Inventory $inv -MatchThreshold $MatchThreshold
+            $seedJson = ConvertTo-LegacyMigrationSeed -Mapping $map
             $migr = @($map | Where-Object { $_.MigrationStatus -eq "Migrated to Defender" }).Count
             $pend = @($map | Where-Object { $_.MigrationStatus -eq "Matched - not onboarded" }).Count
             $miss = @($map | Where-Object { $_.MigrationStatus -eq "Not found in Defender" }).Count
-            Write-Ok "Trend migration mapped: $($map.Count) devices - $migr migrated, $pend matched/not onboarded, $miss not in Defender"
+            Write-Ok "Legacy migration mapped: $($map.Count) devices - $migr migrated, $pend matched/not onboarded, $miss not in Defender"
+            Write-LegacyProductBreakdown -Records $map -WithStatus
         } catch {
-            Write-Warn2 "Could not build the Trend migration mapping ($($_.Exception.Message)). Deploying with an empty TrendMigration table."
+            Write-Warn2 "Could not build the legacy AV/EDR migration mapping ($($_.Exception.Message)). Deploying with an empty migration table."
         }
     }
     $seedB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($seedJson))
-    return @{ "definition/tables/TrendMigration.tmdl" = $txt.Replace('__TRENDMIGRATION_SEED_B64__', $seedB64) }
+    return @{ "definition/tables/LegacyAvMigration.tmdl" = $txt.Replace('__LEGACYMIGRATION_SEED_B64__', $seedB64) }
 }
+
+# ----------------------------------------------------------------------------------
+# Backward-compatible aliases. Earlier releases of this dashboard exposed Trend-only
+# names; scripts or forks calling them keep working against the vendor-neutral core.
+# ----------------------------------------------------------------------------------
+Set-Alias -Name Resolve-TrendColumn        -Value Resolve-CsvColumn            -Scope Script -Force
+Set-Alias -Name Get-TrendSourceFromColumns -Value Get-LegacyProductFromColumns -Scope Script -Force
+Set-Alias -Name Get-TrendDeviceNames       -Value Get-LegacyDeviceNames        -Scope Script -Force
+Set-Alias -Name Get-TrendDedupKey          -Value Get-LegacyDedupKey           -Scope Script -Force
+Set-Alias -Name Read-TrendStore            -Value Read-LegacyStore             -Scope Script -Force
+Set-Alias -Name Merge-TrendStore           -Value Merge-LegacyStore            -Scope Script -Force
+Set-Alias -Name Write-TrendStore           -Value Write-LegacyStore            -Scope Script -Force
+Set-Alias -Name ConvertTo-TrendMigrationSeed -Value ConvertTo-LegacyMigrationSeed -Scope Script -Force
+

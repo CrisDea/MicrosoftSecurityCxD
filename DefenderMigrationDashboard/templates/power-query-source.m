@@ -34,7 +34,7 @@
 // It runs templates\devicehealth-model-fact.kql (verified end-to-end against a
 // real Defender tenant via runHuntingQuery: it returns the full model schema with
 // real DeviceType/OS/EDR/AV-compliance/AVMode/MigrationStatus/DeviceStatus/
-// Healthy/ManagedBy/Trend/VDI/CloudLocation/ADDomain values).
+// Healthy/ManagedBy/LegacyAv/VDI/CloudLocation/ADDomain values).
 // ============================================================================
 
 
@@ -60,8 +60,8 @@ let
         {"OnboardingStatus", type text}, {"SensorHealthState", type text}, {"MigrationStatus", type text},
         {"DeviceStatus", type text}, {"MachineGroup", type text},
         {"CloudLocation", type text}, {"ADDomain", type text}, {"IsVDI", type text},
-        {"ManagedBy", type text}, {"ManagementMethods", type text}, {"TrendInstalled", type text},
-        {"TrendProduct", type text}, {"ThirdPartyAV", type text}, {"ThirdPartyEDR", type text},
+        {"ManagedBy", type text}, {"ManagementMethods", type text}, {"LegacyAvInstalled", type text},
+        {"LegacyAvProduct", type text}, {"ThirdPartyAV", type text}, {"ThirdPartyEDR", type text},
         {"Healthy", type text}, {"LastSeen", type datetime}})
 in
     Typed
@@ -151,3 +151,4 @@ let
         })
 in
     Source
+

@@ -1,16 +1,16 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
-  "name": "ce353c6714aa98bb5fba",
+  "name": "e5a70000000000000007",
   "position": {
+    "y": 466,
+    "z": 6,
+    "tabOrder": 6,
+    "height": 228,
     "x": 20,
-    "y": 212,
-    "z": 4000,
-    "height": 288,
-    "width": 610,
-    "tabOrder": 4000
+    "width": 360
   },
   "visual": {
-    "visualType": "lineChart",
+    "visualType": "clusteredBarChart",
     "drillFilterOtherVisuals": true,
     "visualContainerObjects": {
       "background": [
@@ -154,64 +154,130 @@
             }
           }
         }
+      ],
+      "title": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
+                }
+              }
+            }
+          }
+        }
       ]
     },
     "query": {
       "queryState": {
-        "Category": {
-          "projections": [
-            {
-              "field": {
-                "Column": {
-                  "Expression": {
-                    "SourceRef": {
-                      "Entity": "DeploymentTrend"
-                    }
-                  },
-                  "Property": "Date"
-                }
-              },
-              "queryRef": "DeploymentTrend.Date",
-              "nativeQueryRef": "Date",
-              "active": true
-            }
-          ]
-        },
         "Y": {
           "projections": [
             {
+              "nativeQueryRef": "Legacy Migrated",
               "field": {
                 "Measure": {
+                  "Property": "Legacy Migrated",
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "DeploymentTrend"
+                      "Entity": "LegacyAvMigration"
                     }
-                  },
-                  "Property": "Trend Onboarded"
+                  }
                 }
               },
-              "queryRef": "DeploymentTrend.Trend Onboarded",
-              "nativeQueryRef": "Trend Onboarded"
+              "queryRef": "LegacyAvMigration.Legacy Migrated"
             },
             {
+              "nativeQueryRef": "Legacy Onboarding Pending",
               "field": {
                 "Measure": {
+                  "Property": "Legacy Onboarding Pending",
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "DeploymentTrend"
+                      "Entity": "LegacyAvMigration"
                     }
-                  },
-                  "Property": "Trend Remaining Devices"
+                  }
                 }
               },
-              "queryRef": "DeploymentTrend.Trend Remaining Devices",
-              "nativeQueryRef": "Trend Remaining Devices"
+              "queryRef": "LegacyAvMigration.Legacy Onboarding Pending"
+            },
+            {
+              "nativeQueryRef": "Legacy Not In Defender",
+              "field": {
+                "Measure": {
+                  "Property": "Legacy Not In Defender",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "LegacyAvMigration"
+                    }
+                  }
+                }
+              },
+              "queryRef": "LegacyAvMigration.Legacy Not In Defender"
+            }
+          ]
+        },
+        "Category": {
+          "projections": [
+            {
+              "nativeQueryRef": "LegacyProduct",
+              "field": {
+                "Column": {
+                  "Property": "LegacyProduct",
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "LegacyAvMigration"
+                    }
+                  }
+                }
+              },
+              "queryRef": "LegacyAvMigration.LegacyProduct"
             }
           ]
         }
       }
     },
     "objects": {
+      "valueAxis": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "legend": [
+        {
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "true"
+                }
+              }
+            },
+            "position": {
+              "expr": {
+                "Literal": {
+                  "Value": "'Bottom'"
+                }
+              }
+            },
+            "fontSize": {
+              "expr": {
+                "Literal": {
+                  "Value": "8D"
+                }
+              }
+            }
+          }
+        }
+      ],
       "title": [
         {
           "properties": {
@@ -225,14 +291,14 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Legacy AV agent removal over time'"
+                  "Value": "'Migration progress by legacy product'"
                 }
               }
             },
-            "fontSize": {
+            "heading": {
               "expr": {
                 "Literal": {
-                  "Value": "12D"
+                  "Value": "'H3'"
                 }
               }
             },
@@ -243,17 +309,10 @@
                 }
               }
             },
-            "titleWrap": {
+            "fontSize": {
               "expr": {
                 "Literal": {
-                  "Value": "true"
-                }
-              }
-            },
-            "heading": {
-              "expr": {
-                "Literal": {
-                  "Value": "'H3'"
+                  "Value": "11D"
                 }
               }
             }

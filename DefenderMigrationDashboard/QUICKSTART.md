@@ -4,7 +4,7 @@ Deploy the Defender Migration Dashboard to a Power BI / Microsoft Fabric workspa
 your live Microsoft Defender tenant.
 
 ## Prerequisites
-- PowerShell 7.x (or Windows PowerShell 5.1)
+- Windows PowerShell 5.1 or PowerShell 7.x
 - Azure CLI (`az`) signed in to the target tenant (for the Fabric publish)
 - An Entra app with the four **WindowsDefenderATP** application permissions (`Machine.Read.All`,
   `Software.Read.All`, `Vulnerability.Read.All`, `AdvancedQuery.Read.All`, admin-consented) — the
@@ -70,3 +70,4 @@ pwsh ./deploy/Export-Report.ps1 -WorkspaceId <ws-guid> -ReportId <report-guid> -
 ## More detail
 See the main `README.md` → "How the live data path works", and `PERMISSIONS.md` for the exact
 permissions each task needs.
+

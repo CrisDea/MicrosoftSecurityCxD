@@ -165,27 +165,55 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "TrendDeviceName"
+                  "Property": "LegacyProduct"
                 }
               },
-              "queryRef": "TrendMigration.TrendDeviceName",
-              "nativeQueryRef": "TrendDeviceName"
+              "queryRef": "LegacyAvMigration.LegacyProduct",
+              "nativeQueryRef": "LegacyProduct"
             },
             {
               "field": {
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
+                    }
+                  },
+                  "Property": "LegacyVendor"
+                }
+              },
+              "queryRef": "LegacyAvMigration.LegacyVendor",
+              "nativeQueryRef": "LegacyVendor"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "LegacyAvMigration"
+                    }
+                  },
+                  "Property": "LegacyDeviceName"
+                }
+              },
+              "queryRef": "LegacyAvMigration.LegacyDeviceName",
+              "nativeQueryRef": "LegacyDeviceName"
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "DefenderDeviceName"
                 }
               },
-              "queryRef": "TrendMigration.DefenderDeviceName",
+              "queryRef": "LegacyAvMigration.DefenderDeviceName",
               "nativeQueryRef": "DefenderDeviceName"
             },
             {
@@ -193,13 +221,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "MatchType"
                 }
               },
-              "queryRef": "TrendMigration.MatchType",
+              "queryRef": "LegacyAvMigration.MatchType",
               "nativeQueryRef": "MatchType"
             },
             {
@@ -207,13 +235,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "MatchScore"
                 }
               },
-              "queryRef": "TrendMigration.MatchScore",
+              "queryRef": "LegacyAvMigration.MatchScore",
               "nativeQueryRef": "MatchScore"
             },
             {
@@ -221,13 +249,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "OnboardingStatus"
                 }
               },
-              "queryRef": "TrendMigration.OnboardingStatus",
+              "queryRef": "LegacyAvMigration.OnboardingStatus",
               "nativeQueryRef": "OnboardingStatus"
             },
             {
@@ -235,13 +263,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "OSPlatform"
                 }
               },
-              "queryRef": "TrendMigration.OSPlatform",
+              "queryRef": "LegacyAvMigration.OSPlatform",
               "nativeQueryRef": "OSPlatform"
             },
             {
@@ -249,13 +277,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "OSVersion"
                 }
               },
-              "queryRef": "TrendMigration.OSVersion",
+              "queryRef": "LegacyAvMigration.OSVersion",
               "nativeQueryRef": "OSVersion"
             },
             {
@@ -263,13 +291,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "MigrationStatus"
                 }
               },
-              "queryRef": "TrendMigration.MigrationStatus",
+              "queryRef": "LegacyAvMigration.MigrationStatus",
               "nativeQueryRef": "MigrationStatus"
             }
           ]
@@ -290,7 +318,7 @@
             "text": {
               "expr": {
                 "Literal": {
-                  "Value": "'Trend devices mapped to Defender (latest version, onboarding state, match quality)'"
+                  "Value": "'Legacy AV/EDR devices mapped to Defender (product, onboarding state, match quality)'"
                 }
               }
             },

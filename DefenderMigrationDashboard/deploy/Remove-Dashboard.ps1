@@ -51,7 +51,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_Common.ps1"
-
+Test-PowerShellBaseline
 function Confirm-Action([string]$Message) {
     if ($Force) { return $true }
     $ans = Read-Host "$Message  [y/N]"
@@ -133,3 +133,4 @@ catch {
     Write-Err "Cleanup failed: $($_.Exception.Message)"
     exit 1
 }
+

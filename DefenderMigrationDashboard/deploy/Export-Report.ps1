@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_Common.ps1"
-
+Test-PowerShellBaseline
 try {
     if ($ConfigPath) {
         $cfg = Import-DeployConfig -ConfigPath $ConfigPath
@@ -97,3 +97,4 @@ catch {
     Write-Err "Export failed: $($_.Exception.Message)"
     exit 1
 }
+

@@ -6,6 +6,60 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.19.01] — 2026-08-19
+
+### Added
+- **Vendor-neutral legacy AV/EDR ingest.** The migration mapping is no longer Trend-Micro-specific.
+  A built-in catalog auto-detects 21 products across ~20 vendors (Trend Micro, Symantec/Broadcom,
+  McAfee/Trellix, Sophos, CrowdStrike, SentinelOne, Kaspersky, ESET, Bitdefender, Carbon Black,
+  Cortex XDR, Cybereason, Cylance, and more) from the CSV header signature. Unrecognised exports are
+  ingested and labelled `Legacy AV/EDR` rather than failing.
+- **Per-row product and vendor labels.** Every ingested device row carries its own `LegacyProduct`
+  and `LegacyVendor` for its entire life, so an estate migrating off SEVERAL tools at once is
+  tracked correctly. Resolution order: `-SourceProduct` override -> per-row CSV column -> header
+  auto-detection.
+- **Multi-product reporting.** New `LegacyVendor` column; new measures `Legacy Products In Scope`,
+  `Legacy Products Not Complete`, `Legacy Slowest Product` and `Legacy Slowest Product %`. The
+  **Legacy AV Migration** page gains a *Migration progress by legacy product* bar chart, legacy
+  product/vendor page filters, a products-in-scope KPI, and product/vendor as the leading columns of
+  the detail table.
+- **Multi-vendor on-box detection.** `DeviceHealth` and `templates/defender-kql-pack.kql` now
+  recognise ~45 product marks across ~25 vendors (was Trend-only), driving `LegacyAvInstalled` /
+  `LegacyAvProduct` and the **Legacy Remaining** measure. Defender's own components are excluded.
+- **`Test-ConfigSecurity`** — warns (never blocks) when `config.json` sits in a cloud-synced
+  folder, inside a non-git-ignored work tree, or carries an over-broad ACL.
+- **Regression suites.** `deploy/Test-LegacyIngest.ps1` (40 assertions over the ingest engine) and
+  `deploy/Test-PbipIntegrity.ps1` (validates every report binding against the model).
+
+### Changed
+- **Windows PowerShell 5.1 compatibility across every script.** Removed PS7-only syntax, added a
+  `Test-PowerShellBaseline` guard, and raised the TLS floor to 1.2 (1.3 when available) — .NET
+  Framework's SSL3/TLS1.0 default otherwise fails Entra/Fabric/Defender calls with a misleading
+  "connection was closed unexpectedly".
+- **Renames.** `Import-TrendInventory.ps1` -> `Import-LegacyAvInventory.ps1`; `TrendMigration`
+  table -> `LegacyAvMigration`; `TrendId`/`TrendSource` -> `LegacyId`/`LegacyProduct`;
+  `DeviceHealth[TrendInstalled|TrendProduct|TrendAgentPresent]` ->
+  `[LegacyAvInstalled|LegacyAvProduct|LegacyAvAgentPresent]`; "Trend Migration" page ->
+  "Legacy AV Migration". The time-series `DeploymentTrend` table and its trend history are
+  unchanged — "trend" there means trend-over-time.
+- **`Replace` now warns** when it would discard devices belonging to a different product, and the
+  import prints a per-product breakdown.
+- **Documentation restructured.** `README.md` cut from 509 to ~100 lines (overview, screenshots,
+  quick start, doc index). Detail moved to `docs/multi-vendor-ingest.md`, `docs/deployment.md`,
+  `docs/architecture.md`, `docs/security.md`, `docs/troubleshooting.md`, plus a screenshot
+  capture guide at `docs/images/README.md`.
+
+### Fixed
+- **Broken model reference** — `EstateConfigState` referenced `DeviceHealth[TrendInstalled]`,
+  which did not resolve; it is now correctly bound.
+- `_Common.ps1` contained a PowerShell 7-only null-coalescing operator that prevented the whole
+  toolkit from parsing under Windows PowerShell 5.1.
+
+### Compatibility
+- All 1.x parameter names, config keys and function names remain as aliases
+  (`-TrendCsv`, `-TrendMode`, `-TrendSource`, `trendCsv`, `Get-Trend*`, ...), old config
+  keys are read as a fallback, and a pre-existing `deploy/trend-inventory.local.csv` is adopted
+  automatically on first run.
 ## [2026.07.18.03] — 2026-07-18
 
 ### Added
@@ -543,3 +597,4 @@ refresh, plus a self-contained scripted end-to-end deployment for customer hando
 - Device-group split fix, `DupDeviceId` flag, TVM configuration-assessment dedup, group-aware trend,
   refresh cadence reduced from 8×/day to 2×/day, and the KPI Guide page. (See git history for the full
   pre-3.0.0 changes.)
+

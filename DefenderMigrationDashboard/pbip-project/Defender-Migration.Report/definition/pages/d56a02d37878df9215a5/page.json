@@ -215,11 +215,11 @@
                 "Entity": "DeviceHealth"
               }
             },
-            "Property": "TrendInstalled"
+            "Property": "LegacyAvInstalled"
           }
         },
         "type": "Categorical",
-        "displayName": "Trend installed",
+        "displayName": "Legacy AV installed",
         "howCreated": "User"
       },
       {

@@ -1,7 +1,8 @@
 # deploy/
 
 Deployment and operations scripts for the Defender Migration Dashboard. Pure PowerShell — no
-third-party modules. All scripts authenticate either as a service principal (via `-ConfigPath` or
+third-party modules, and **compatible with Windows PowerShell 5.1** as well as PowerShell 7.x. All
+scripts authenticate either as a service principal (via `-ConfigPath` or
 `-ClientId`/`-ClientSecret`/`-TenantId`) or, if none is supplied, interactively via Azure CLI.
 
 | Script | Purpose |
@@ -11,6 +12,9 @@ third-party modules. All scripts authenticate either as a service principal (via
 | `Remove-Dashboard.ps1` | Cleanup / teardown: removes the report + semantic model by name, and optionally the workspace (`-RemoveWorkspace -Force`). Missing items are treated as already-clean. |
 | `Bootstrap-Deployment.ps1` | Creates **or reuses** an Entra app registration and expands its permissions for service-principal deployment and the live data path. Reads your directory roles and gates each write on its least-privilege role; verifies every step (read-back) and pauses for manual prerequisites. Writes `config.json`. Modes: `CreateNew`, `UseExisting`, `Verify`, `CheckPermissions` (read-only, `-Fix` to grant), `Uninstall` (revoke + remove + optionally `-DeleteApp`). |
 | `Export-Report.ps1` | Headless export of the published report to PDF / PPTX via the Power BI ExportTo API (validates the report exists first). |
+| `Import-LegacyAvInventory.ps1` | Standalone **third-party AV/EDR ingest** — matches a legacy console export (Trend Micro, Symantec, CrowdStrike, SentinelOne, ...) to the current Defender inventory and previews the mapping; `-Materialize` embeds it into the **LegacyAvMigration** table. Use `-LegacyMode Append` once per export to track several products at once — every row keeps its own `LegacyProduct`/`LegacyVendor`. See [`../docs/multi-vendor-ingest.md`](../docs/multi-vendor-ingest.md). |
+| `Test-LegacyIngest.ps1` | Regression suite for the ingest engine (vendor detection, merge, matching, thresholds, seed). Run after any change to `_Common.ps1`. |
+| `Test-PbipIntegrity.ps1` | Validates that every report binding resolves against the semantic model. Run after any model rename and before committing. |
 | `config.json.template` | Copy to `config.json` (git-ignored) and fill in service-principal / live-mode settings. |
 
 See **`../INSTALL.md`** for the full step-by-step guide and **`../PERMISSIONS.md`** for the exact

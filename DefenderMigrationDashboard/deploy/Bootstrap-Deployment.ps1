@@ -100,6 +100,27 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# ---- runtime baseline (Windows PowerShell 5.1 friendly) ---------------------
+# This script is standalone (it must run before the rest of the toolkit is trusted), so the
+# baseline is inlined rather than dot-sourced from _Common.ps1.
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    throw "Windows PowerShell 5.1 or later is required. Detected $($PSVersionTable.PSVersion)."
+}
+if ($PSVersionTable.PSVersion.Major -eq 5 -and $PSVersionTable.PSVersion.Minor -lt 1) {
+    Write-Warning "PowerShell $($PSVersionTable.PSVersion) detected. 5.1 or later is recommended."
+}
+# .NET Framework defaults to SSL3/TLS1.0 which Entra, Fabric and the Defender API refuse; without
+# this the failure surfaces as a misleading "the connection was closed unexpectedly".
+try {
+    $proto = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    try { $proto = $proto -bor ([Net.SecurityProtocolType]'Tls13') } catch { }
+    [Net.ServicePointManager]::SecurityProtocol = $proto
+} catch {
+    Write-Warning "Could not raise the TLS protocol floor: $($_.Exception.Message)"
+}
+$ProgressPreference = 'SilentlyContinue'
+
 $MdatpAppId = "fc780465-2017-40d4-a0c5-307022471b92"   # WindowsDefenderATP (Defender API)
 # The application permissions the solution requires on WindowsDefenderATP. DeviceHealth reads the
 # export-assessment APIs live (Machine/Software/Vulnerability); AdvancedQuery drives the deploy-time

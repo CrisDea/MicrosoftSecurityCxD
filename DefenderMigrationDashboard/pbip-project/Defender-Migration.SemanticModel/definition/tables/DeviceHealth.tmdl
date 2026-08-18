@@ -68,17 +68,17 @@ table DeviceHealth
 		dataType: string
 		sourceColumn: MigrationStatus
 
-	column TrendAgentPresent
+	column LegacyAvAgentPresent
 		dataType: int64
-		sourceColumn: TrendAgentPresent
+		sourceColumn: LegacyAvAgentPresent
 
-	column TrendInstalled
+	column LegacyAvInstalled
 		dataType: string
-		sourceColumn: TrendInstalled
+		sourceColumn: LegacyAvInstalled
 
-	column TrendProduct
+	column LegacyAvProduct
 		dataType: string
-		sourceColumn: TrendProduct
+		sourceColumn: LegacyAvProduct
 
 	column ThirdPartyAV
 		dataType: string
@@ -304,7 +304,7 @@ table DeviceHealth
 		dataType: string
 		sourceColumn: SensorConnectivity
 
-	column ConfigState = IF(DeviceHealth[OnboardingStatus]<>"Onboarded", "Not onboarded (backlog)", IF(DeviceHealth[TrendInstalled]="No" && DeviceHealth[Healthy]="Healthy", "Fully migrated & configured", "Onboarded - needs attention"))
+	column ConfigState = IF(DeviceHealth[OnboardingStatus]<>"Onboarded", "Not onboarded (backlog)", IF(DeviceHealth[LegacyAvInstalled]="No" && DeviceHealth[Healthy]="Healthy", "Fully migrated & configured", "Onboarded - needs attention"))
 		dataType: string
 
 	column 'Platform State' = SWITCH(DeviceHealth[AVPlatformCompliant], "GOOD", "Up to date", "WARN", "Behind", "BAD", "Out of date", "N/A")
@@ -358,10 +358,10 @@ table DeviceHealth
 	measure 'MDE Onboarded' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]="MDE onboarded") + 0
 		formatString: 0
 
-	measure 'Trend Remaining' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]<>"MDE onboarded") + [Trend Not In Defender] + 0
+	measure 'Legacy Remaining' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]<>"MDE onboarded") + [Legacy Not In Defender] + 0
 		formatString: 0
 
-	measure 'Migration %' = IF([Trend Source Devices] = 0, "N/A", DIVIDE([Healthy Onboarded Devices], [Trend Source Devices]))
+	measure 'Migration %' = IF([Legacy Source Devices] = 0, "N/A", DIVIDE([Healthy Onboarded Devices], [Legacy Source Devices]))
 		formatString: 0.0%
 
 	measure 'Healthy Onboarded Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OnboardingStatus]="Onboarded", DeviceHealth[Healthy]="Healthy") + 0
@@ -388,7 +388,7 @@ table DeviceHealth
 	measure 'Non-Compliant Devices' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[AVSigCompliant]="BAD" || DeviceHealth[AVEngineCompliant]="BAD" || DeviceHealth[AVPlatformCompliant]="BAD" || DeviceHealth[SensorCompliant]="BAD"))
 		formatString: 0
 
-	measure 'Fully Migrated & Configured' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[OnboardingStatus]="Onboarded" && DeviceHealth[TrendInstalled]="No" && DeviceHealth[Healthy]="Healthy"))
+	measure 'Fully Migrated & Configured' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[OnboardingStatus]="Onboarded" && DeviceHealth[LegacyAvInstalled]="No" && DeviceHealth[Healthy]="Healthy"))
 		formatString: 0
 
 	measure 'Fully Migrated & Configured %' = DIVIDE([Fully Migrated & Configured], [Total Devices], 0)
@@ -406,7 +406,7 @@ table DeviceHealth
 	measure 'Healthy %' = DIVIDE([Healthy Devices], [Onboarded Devices], 0)
 		formatString: 0.0%
 
-	measure 'Trend Installed Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[TrendInstalled]="Yes")
+	measure 'Legacy AV Installed Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[LegacyAvInstalled]="Yes")
 		formatString: 0
 
 	measure 'VDI Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[IsVDI]="Yes")
@@ -664,8 +664,32 @@ table DeviceHealth
 				    CfgGrp = if Table.RowCount(CfgTab) = 0 then #table({"did","bag"}, {}) else Table.Group(CfgTab, {"did"}, {{"bag", each try Record.FromList([res], [test]) otherwise []}}),
 				    BagLk = if Table.RowCount(CfgGrp) = 0 then [] else Record.FromList(CfgGrp[bag], CfgGrp[did]),
 				    // ---- software inventory -> per-device classification -------------
-				    TrendMarks = {"apex one","officescan","deep security","worry-free","serverprotect","endpoint sensor","security agent","cloud one"},
-				    IsTrend = (s) => Text.Contains(s, "trend") or List.AnyTrue(List.Transform(TrendMarks, each Text.Contains(s, _))),
+				    // Vendor-neutral: detect ANY third-party AV/EDR agent still installed on the
+				    // box, not just Trend Micro. LegacyAvProduct lists the actual product names
+				    // found, so a device carrying two agents shows both.
+				    LegacyAvMarks = {
+				        "apex one","officescan","deep security","worry-free","serverprotect","cloud one","trend micro",
+				        "symantec","norton","sep ","endpoint protection",
+				        "mcafee","trellix","virusscan","epolicy",
+				        "sophos","intercept x","savservice",
+				        "crowdstrike","falcon sensor",
+				        "sentinelone","sentinel one","singularity",
+				        "kaspersky","kes ",
+				        "eset","nod32","egui",
+				        "carbon black","cb defense","cbdefense",
+				        "cylance","blackberry protect",
+				        "bitdefender","gravityzone","epsecurityservice",
+				        "webroot","secureanywhere",
+				        "cortex xdr","traps","palo alto",
+				        "malwarebytes",
+				        "check point","harmony endpoint","sandblast",
+				        "withsecure","f-secure",
+				        "cybereason","tanium",
+				        "cisco secure endpoint","amp for endpoints","clamav",
+				        "fortinet","forticlient",
+				        "avast","avg antivirus","panda security","g data","k7 ","quick heal","seqrite","comodo","emsisoft"
+				    },
+				    IsLegacyAv = (s) => List.AnyTrue(List.Transform(LegacyAvMarks, each Text.Contains(s, _))),
 				    MgmtTool = (s) =>
 				        if Text.Contains(s, "intune") then "Intune"
 				        else if Text.Contains(s, "configuration manager") then "Configuration Manager"
@@ -681,7 +705,14 @@ table DeviceHealth
 				        else if Text.Contains(s, "bitdefender") or Text.Contains(s, "gravityzone") then "Bitdefender"
 				        else if Text.Contains(s, "sentinelone") or Text.Contains(s, "sentinel one") then "SentinelOne"
 				        else if Text.Contains(s, "crowdstrike") or Text.Contains(s, "falcon") then "CrowdStrike"
-				        else if Text.Contains(s, "carbon black") or Text.Contains(s, "cylance") then "Other 3rd-party"
+				        else if Text.Contains(s, "carbon black") then "VMware Carbon Black"
+				        else if Text.Contains(s, "cylance") then "BlackBerry Cylance"
+				        else if Text.Contains(s, "webroot") then "Webroot"
+				        else if Text.Contains(s, "malwarebytes") then "Malwarebytes"
+				        else if Text.Contains(s, "check point") or Text.Contains(s, "harmony") then "Check Point"
+				        else if Text.Contains(s, "withsecure") or Text.Contains(s, "f-secure") then "WithSecure"
+				        else if Text.Contains(s, "forticlient") or Text.Contains(s, "fortinet") then "Fortinet"
+				        else if Text.Contains(s, "cortex") or Text.Contains(s, "traps") then "Palo Alto"
 				        else null,
 				    EDRName = (s) =>
 				        if Text.Contains(s, "crowdstrike") or Text.Contains(s, "falcon") then "CrowdStrike Falcon"
@@ -691,6 +722,9 @@ table DeviceHealth
 				        else if Text.Contains(s, "cybereason") then "Cybereason"
 				        else if Text.Contains(s, "tanium") then "Tanium"
 				        else if Text.Contains(s, "cylance") then "BlackBerry Cylance"
+				        else if Text.Contains(s, "vision one") or Text.Contains(s, "endpoint sensor") then "Trend Micro Vision One"
+				        else if Text.Contains(s, "harmony endpoint") then "Check Point Harmony"
+				        else if Text.Contains(s, "cisco secure endpoint") or Text.Contains(s, "amp for endpoints") then "Cisco Secure Endpoint"
 				        else null,
 				    SwRecs = List.Transform(Software, (r) =>
 				        [ did = F(r, "deviceId", null),
@@ -698,9 +732,9 @@ table DeviceHealth
 				          nm = Text.From(F(r, "softwareName", "") ?? ""),
 				          eos = F(r, "endOfSupportDate", null) ]),
 				    SwTab = Table.FromRecords(SwRecs, type table [did = text, sw = text, nm = text, eos = any]),
-				    SwGrp = if Table.RowCount(SwTab) = 0 then #table({"did","TrendInstalled","TrendProduct","MgmtTools","ThirdPartyAV","ThirdPartyEDR","EOS"}, {}) else Table.Group(SwTab, {"did"}, {
-				        {"TrendInstalled", each if List.AnyTrue(List.Transform([sw], IsTrend)) then "Yes" else "No"},
-				        {"TrendProduct", each Text.Combine(List.Distinct(List.Transform(Table.SelectRows(_, each IsTrend([sw]))[nm], each _)), " , ")},
+				    SwGrp = if Table.RowCount(SwTab) = 0 then #table({"did","LegacyAvInstalled","LegacyAvProduct","MgmtTools","ThirdPartyAV","ThirdPartyEDR","EOS"}, {}) else Table.Group(SwTab, {"did"}, {
+				        {"LegacyAvInstalled", each if List.AnyTrue(List.Transform([sw], IsLegacyAv)) then "Yes" else "No"},
+				        {"LegacyAvProduct", each Text.Combine(List.Distinct(List.Transform(Table.SelectRows(_, each IsLegacyAv([sw]))[nm], each _)), " , ")},
 				        {"MgmtTools", each Text.Combine(List.Distinct(List.RemoveNulls(List.Transform([sw], MgmtTool))), ", ")},
 				        {"ThirdPartyAV", each let a = List.RemoveNulls(List.Transform([sw], AVName)) in if List.Count(a) > 0 then a{0} else "None"},
 				        {"ThirdPartyEDR", each let a = List.RemoveNulls(List.Transform([sw], EDRName)) in if List.Count(a) > 0 then a{0} else "None"},
@@ -812,7 +846,7 @@ table DeviceHealth
 				            AVEN = Record.FieldOrDefault(bag, "AntivirusEnabled", "N/A"),
 				            AVREP = Record.FieldOrDefault(bag, "AntivirusReporting", "N/A"),
 				            sw = Record.FieldOrDefault(SwLk, did, null),
-				            trendInst = if sw = null then "No" else F(sw, "TrendInstalled", "No"),
+				            legacyInst = if sw = null then "No" else F(sw, "LegacyAvInstalled", "No"),
 				            eosDate = if sw = null then null else F(sw, "EOS", null),
 				            gk = osp & "|" & ver,
 				            vk = if F(m, "agentVersion", null) = null then null else VerKey(F(m, "agentVersion", "")),
@@ -858,7 +892,7 @@ table DeviceHealth
 				            edrVer = let p = Text.Split(edrVerFull, ".") in if List.Count(p) >= 2 then p{0} & "." & p{1} else edrVerFull,
 				            edrLatest = if sGreen = null then "" else edrVer,
 				            adDomain = if Text.Contains(name, ".") then Text.Range(name, Text.PositionOf(name, ".") + 1) else "Azure AD joined / Workgroup",
-				            migStatus = if onb and trendInst = "Yes" then "Co-existence" else if onb then "MDE onboarded" else if trendInst = "Yes" then "Trend only" else "Not onboarded"
+				            migStatus = if onb and legacyInst = "Yes" then "Co-existence" else if onb then "MDE onboarded" else if legacyInst = "Yes" then "Legacy AV only" else "Not onboarded"
 				        in
 				            [ DeviceId = did, DeviceName = name, DeviceType = devType, MachineGroup = grp,
 				              DupDeviceId = if F(m, "isPotentialDuplication", false) = true then "Yes" else "No",
@@ -867,8 +901,8 @@ table DeviceHealth
 				              ManagedBy = managedBy, ManagementMethods = mgMethods,
 				              OnboardingStatus = onbLabel,
 				              SensorHealthState = health, ConnectivityType = "N/A", ExposureLevel = Text.From(F(m, "exposureLevel", "") ?? ""),
-				              MigrationStatus = migStatus, TrendInstalled = trendInst,
-				              TrendProduct = if sw = null then "" else F(sw, "TrendProduct", ""),
+				              MigrationStatus = migStatus, LegacyAvInstalled = legacyInst,
+				              LegacyAvProduct = if sw = null then "" else F(sw, "LegacyAvProduct", ""),
 				              ThirdPartyAV = if sw = null then "None" else F(sw, "ThirdPartyAV", "None"),
 				              ThirdPartyEDR = if sw = null then "None" else F(sw, "ThirdPartyEDR", "None"),
 				              DeviceStatus = devStatus, LastSeen = lastSeen,
@@ -887,9 +921,9 @@ table DeviceHealth
 				              AppCompliant = if isMobile then sensor else "N/A", WebProtection = if isMobile then "Unknown" else "N/A",
 				              Healthy = healthy, SensorConnectivity = conn ],
 				    Rows = List.Transform(MachActiveList, Build),
-				    AsTable = Table.FromRecords(Rows, {"DeviceId", "DeviceName", "DeviceType", "MachineGroup", "DupDeviceId", "DeviceTags", "CloudPlatforms", "CloudLocation", "ADDomain", "IsVDI", "ManagedBy", "ManagementMethods", "OnboardingStatus", "SensorHealthState", "ConnectivityType", "ExposureLevel", "MigrationStatus", "TrendInstalled", "TrendProduct", "ThirdPartyAV", "ThirdPartyEDR", "DeviceStatus", "LastSeen", "OSPlatform", "OSDistribution", "OSVersionInfo", "OSBuildVersion", "OSLatestVer", "OSUpdated", "EOS", "OSProduct", "OSFullVersion", "OSBuildNumber", "OSPatchUBR", "OSSupportState", "OSEolDate", "OSPatchCurrency", "OSPatchBasis", "OSMonthsBehind", "OSFamily", "EDRVersion", "EDRLatestVersion", "EDRUpdate", "EDRPlatform", "EDRImpairedCommunications", "EDRSensorDataCollection", "AVProductVersion", "AVPlatformCompliant", "AVEngineVersion", "AVEngineCompliant", "AVSigVersion", "AVSigCompliant", "SensorCompliant", "AVSigLastUpdateTime", "AVMode", "AVPlatformRing", "AVEngineRing", "AVSignatureRing", "AntivirusEnabled", "AntivirusReporting", "RealtimeProtection", "CloudProtection", "BehaviorMonitoring", "NetworkProtection", "PUAProtection", "TamperProtection", "EBPFStatus", "MobileMgmt", "EnrollmentProfile", "DefenderAppVersion", "AppCompliant", "WebProtection", "Healthy", "SensorConnectivity"}, MissingField.UseNull),
-				    WithTrendPresent = Table.AddColumn(AsTable, "TrendAgentPresent", each if [TrendInstalled] = "Yes" then 1 else 0, Int64.Type),
-				    Dated = Table.TransformColumns(WithTrendPresent, {{"LastSeen", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"EOS", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"AVSigLastUpdateTime", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}}),
-				    Typed = Table.TransformColumnTypes(Dated, {{"TrendAgentPresent", Int64.Type}, {"OSMonthsBehind", Int64.Type}, {"OSEolDate", type date}})
+				    AsTable = Table.FromRecords(Rows, {"DeviceId", "DeviceName", "DeviceType", "MachineGroup", "DupDeviceId", "DeviceTags", "CloudPlatforms", "CloudLocation", "ADDomain", "IsVDI", "ManagedBy", "ManagementMethods", "OnboardingStatus", "SensorHealthState", "ConnectivityType", "ExposureLevel", "MigrationStatus", "LegacyAvInstalled", "LegacyAvProduct", "ThirdPartyAV", "ThirdPartyEDR", "DeviceStatus", "LastSeen", "OSPlatform", "OSDistribution", "OSVersionInfo", "OSBuildVersion", "OSLatestVer", "OSUpdated", "EOS", "OSProduct", "OSFullVersion", "OSBuildNumber", "OSPatchUBR", "OSSupportState", "OSEolDate", "OSPatchCurrency", "OSPatchBasis", "OSMonthsBehind", "OSFamily", "EDRVersion", "EDRLatestVersion", "EDRUpdate", "EDRPlatform", "EDRImpairedCommunications", "EDRSensorDataCollection", "AVProductVersion", "AVPlatformCompliant", "AVEngineVersion", "AVEngineCompliant", "AVSigVersion", "AVSigCompliant", "SensorCompliant", "AVSigLastUpdateTime", "AVMode", "AVPlatformRing", "AVEngineRing", "AVSignatureRing", "AntivirusEnabled", "AntivirusReporting", "RealtimeProtection", "CloudProtection", "BehaviorMonitoring", "NetworkProtection", "PUAProtection", "TamperProtection", "EBPFStatus", "MobileMgmt", "EnrollmentProfile", "DefenderAppVersion", "AppCompliant", "WebProtection", "Healthy", "SensorConnectivity"}, MissingField.UseNull),
+				    WithLegacyAvPresent = Table.AddColumn(AsTable, "LegacyAvAgentPresent", each if [LegacyAvInstalled] = "Yes" then 1 else 0, Int64.Type),
+				    Dated = Table.TransformColumns(WithLegacyAvPresent, {{"LastSeen", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"EOS", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}, {"AVSigLastUpdateTime", each if _ = null or _ = "" or _ = "N/A" then null else Date.FromText(Text.Start(Text.From(_),10)), type date}}),
+				    Typed = Table.TransformColumnTypes(Dated, {{"LegacyAvAgentPresent", Int64.Type}, {"OSMonthsBehind", Int64.Type}, {"OSEolDate", type date}})
 				in
 				    Typed

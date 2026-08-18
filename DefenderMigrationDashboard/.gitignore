@@ -18,11 +18,15 @@ desktop.ini
 .pbi/
 cache.abf
 
-# Local Trend->Defender mapping preview (contains device data)
+# Local legacy-AV -> Defender mapping preview (contains device data)
+deploy/legacy-migration-mapping.csv
+legacy-migration-mapping.csv
 deploy/trend-migration-mapping.csv
 trend-migration-mapping.csv
 
-# Local Trend master store (accumulated device list - contains customer data)
+# Local legacy-AV master store (accumulated device list - contains customer data)
+deploy/legacy-inventory.local.csv
+legacy-inventory.local.csv
 deploy/trend-inventory.local.csv
 trend-inventory.local.csv
 *.local.csv

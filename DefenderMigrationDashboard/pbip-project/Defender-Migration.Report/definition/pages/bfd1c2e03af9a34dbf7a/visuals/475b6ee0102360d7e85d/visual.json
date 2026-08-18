@@ -210,11 +210,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "Trend Remaining"
+                  "Property": "Legacy Remaining"
                 }
               },
-              "queryRef": "DeviceHealth.Trend Remaining",
-              "nativeQueryRef": "Trend Remaining"
+              "queryRef": "DeviceHealth.Legacy Remaining",
+              "nativeQueryRef": "Legacy Remaining"
             }
           ]
         }

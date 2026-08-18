@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Trend Micro → Microsoft Defender rollout",
+                    "value": "Legacy AV/EDR → Microsoft Defender rollout",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",

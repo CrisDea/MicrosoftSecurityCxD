@@ -214,29 +214,48 @@ let LastSeenDays = 30d;   // <-- bind from Power BI "Last seen" parameter
 
 
 // ---------------------------------------------------------------------------
-// 6. TREND MICRO DETECTION (real, from TVM software inventory)
-//    Trend is a security PRODUCT FAMILY. Detect any Trend endpoint agent so the
-//    report can show "Trend still installed" (migration not complete on box).
+// 6. LEGACY AV/EDR DETECTION (real, from TVM software inventory)
+//    Detects ANY third-party endpoint security agent still installed on the box,
+//    so the report can show "legacy AV still installed" (migration not complete
+//    on that device) regardless of which product the customer is migrating from.
 //    Vendor casing is not guaranteed -> use has (substring), not ==.
-//    Product names verified in research: Apex One / Apex One Security Agent,
-//    OfficeScan / OfficeScan Client, Deep Security Agent, ServerProtect,
-//    Worry-Free Business Security Agent, Endpoint Sensor, Cloud One.
+//    Covers: Trend Micro, Symantec/Broadcom, McAfee/Trellix, Sophos, CrowdStrike,
+//    SentinelOne, Kaspersky, ESET, Bitdefender, Carbon Black/VMware, Palo Alto
+//    Cortex, Cybereason, Cylance/BlackBerry, Webroot, Malwarebytes, Check Point,
+//    F-Secure/WithSecure, Fortinet, Cisco Secure Endpoint/AMP, Panda, Avast/AVG,
+//    G DATA, Trellix HX, Elastic Endpoint.
 //    Source: DeviceTvmSoftwareInventory (SoftwareVendor / SoftwareName).
 // ---------------------------------------------------------------------------
-let trend = DeviceTvmSoftwareInventory
-    | where SoftwareVendor has "trend"
-         or SoftwareName has_any ("Apex One","OfficeScan","Deep Security",
-              "Worry-Free","ServerProtect","Endpoint Sensor","Security Agent",
-              "Client/Server Security","Cloud One")
-    | summarize TrendProducts = make_set(SoftwareName) by DeviceId
-    | extend TrendInstalled = "Trend present";
+let legacyVendors = dynamic(["trend","symantec","broadcom","mcafee","trellix","sophos",
+    "crowdstrike","sentinelone","kaspersky","eset","bitdefender","carbon black","vmware carbon",
+    "palo alto","cybereason","cylance","blackberry","webroot","malwarebytes","check point",
+    "f-secure","withsecure","fortinet","cisco","panda security","avast","avg technologies",
+    "g data","fireeye","elastic"]);
+let legacyProducts = dynamic(["Apex One","OfficeScan","Deep Security","Worry-Free","ServerProtect",
+    "Endpoint Sensor","Client/Server Security","Cloud One","Vision One","Endpoint Protection",
+    "Symantec Agent","SEP","Endpoint Security","VirusScan","ENS","Trellix Agent","Intercept X",
+    "Sophos Endpoint","Falcon Sensor","SentinelOne Agent","Kaspersky Endpoint Security",
+    "ESET Endpoint","GravityZone","Cb Defense","Carbon Black Cloud Sensor","Cortex XDR",
+    "Traps","Cybereason Sensor","CylancePROTECT","CylanceOPTICS","Webroot SecureAnywhere",
+    "Malwarebytes Endpoint","Harmony Endpoint","SandBlast Agent","WithSecure Elements",
+    "F-Secure Client Security","FortiClient","Secure Endpoint","AMP for Endpoints",
+    "Adaptive Defense","Endpoint Agent","HX Agent","Elastic Endpoint"]);
+let legacyAv = DeviceTvmSoftwareInventory
+    | where SoftwareVendor has_any (legacyVendors)
+         or SoftwareName has_any (legacyProducts)
+    // Defender's own components ship under Microsoft - never count them as legacy.
+    | where SoftwareVendor !has "microsoft"
+    | summarize LegacyAvProducts = make_set(SoftwareName),
+                LegacyAvVendors  = make_set(SoftwareVendor) by DeviceId
+    | extend LegacyAvInstalled = "Legacy AV present";
 DeviceInfo
 | where Timestamp > ago(LastSeenDays)
 | summarize arg_max(Timestamp, *) by DeviceId
-| join kind=leftouter (trend) on DeviceId
-| extend TrendInstalled = coalesce(TrendInstalled, "No Trend"),
-         TrendProducts   = coalesce(TrendProducts, dynamic([]))
-| project DeviceId, DeviceName, TrendInstalled, TrendProducts
+| join kind=leftouter (legacyAv) on DeviceId
+| extend LegacyAvInstalled = coalesce(LegacyAvInstalled, "No legacy AV"),
+         LegacyAvProducts  = coalesce(LegacyAvProducts, dynamic([])),
+         LegacyAvVendors   = coalesce(LegacyAvVendors, dynamic([]))
+| project DeviceId, DeviceName, LegacyAvInstalled, LegacyAvProducts, LegacyAvVendors
 
 
 // ---------------------------------------------------------------------------
@@ -329,23 +348,35 @@ let inv2 = DeviceInfo
     | where Timestamp > ago(LastSeenDays)
     | where isempty(MergedToDeviceId)
     | summarize arg_max(Timestamp, *) by DeviceId;
-let trend2 = DeviceTvmSoftwareInventory
-    | where SoftwareVendor has "trend"
-         or SoftwareName has_any ("Apex One","OfficeScan","Deep Security","Worry-Free",
-              "ServerProtect","Endpoint Sensor","Security Agent","Cloud One")
-    | summarize TrendProducts = make_set(SoftwareName) by DeviceId;
+let legacyVendors2 = dynamic(["trend","symantec","broadcom","mcafee","trellix","sophos",
+    "crowdstrike","sentinelone","kaspersky","eset","bitdefender","carbon black","vmware carbon",
+    "palo alto","cybereason","cylance","blackberry","webroot","malwarebytes","check point",
+    "f-secure","withsecure","fortinet","cisco","panda security","avast","avg technologies",
+    "g data","fireeye","elastic"]);
+let legacyProducts2 = dynamic(["Apex One","OfficeScan","Deep Security","Worry-Free","ServerProtect",
+    "Endpoint Sensor","Cloud One","Vision One","Endpoint Protection","SEP","Endpoint Security",
+    "VirusScan","ENS","Trellix Agent","Intercept X","Falcon Sensor","SentinelOne Agent",
+    "Kaspersky Endpoint Security","ESET Endpoint","GravityZone","Cb Defense","Cortex XDR","Traps",
+    "Cybereason Sensor","CylancePROTECT","Webroot SecureAnywhere","Malwarebytes Endpoint",
+    "Harmony Endpoint","SandBlast Agent","WithSecure Elements","FortiClient","Secure Endpoint",
+    "AMP for Endpoints","HX Agent","Elastic Endpoint"]);
+let legacyAv2 = DeviceTvmSoftwareInventory
+    | where SoftwareVendor has_any (legacyVendors2)
+         or SoftwareName has_any (legacyProducts2)
+    | where SoftwareVendor !has "microsoft"
+    | summarize LegacyAvProducts = make_set(SoftwareName) by DeviceId;
 let health2 = DeviceTvmSecureConfigurationAssessment
     | where ConfigurationId in (healthScids)
     | extend Result = case(IsApplicable == 0, "N/A", IsCompliant == 1, "GOOD", "BAD")
     | summarize BadTests = countif(Result == "BAD") by DeviceId;
 inv2
-| join kind=leftouter (trend2) on DeviceId
+| join kind=leftouter (legacyAv2) on DeviceId
 | join kind=leftouter (health2) on DeviceId
 | extend DeviceClass = iff(DeviceType == "Server" or OSPlatform has "Server", "Server", "Client"),
          Cloud = tostring(column_ifexists("CloudPlatforms","")),
          Tags = strcat(tostring(column_ifexists("DeviceManualTags","")), " ",
                        tostring(column_ifexists("DeviceDynamicTags",""))),
-         TrendInstalled = iff(array_length(TrendProducts) > 0, "Trend present", "No Trend")
+         LegacyAvInstalled = iff(array_length(LegacyAvProducts) > 0, "Legacy AV present", "No legacy AV")
 | extend CloudLocation = case(Cloud has "Azure","Azure", Cloud has "AWS" or Cloud has "Amazon","AWS",
              Cloud has "GCP" or Cloud has "Google","GCP", isempty(Cloud) or Cloud == "Unknown","On-premises", Cloud),
          ADDomain = iff(DeviceName has ".", substring(DeviceName, indexof(DeviceName,".")+1), "Azure AD joined / Workgroup"),
@@ -354,7 +385,7 @@ inv2
                         isnull(BadTests) or BadTests == 0, "Healthy", "Unhealthy")
 | project DeviceId, DeviceName, DeviceClass, DeviceType, OSPlatform, OSVersion, OSBuild,
           OnboardingStatus, SensorHealthState, MachineGroup, LastSeen=Timestamp,
-          CloudLocation, ADDomain, IsVDI, TrendInstalled, TrendProducts, Healthy, BadTests
+          CloudLocation, ADDomain, IsVDI, LegacyAvInstalled, LegacyAvProducts, Healthy, BadTests
 
 
 // ---------------------------------------------------------------------------
@@ -387,3 +418,4 @@ DeviceInfo
         OnboardingStatus == "Onboarded",                          "Microsoft Defender for Endpoint",
         "Unmanaged")
 | project DeviceId, DeviceName, OnboardingStatus, ManagedBy
+

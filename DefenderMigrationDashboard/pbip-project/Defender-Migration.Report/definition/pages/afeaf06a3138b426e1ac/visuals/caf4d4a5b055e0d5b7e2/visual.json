@@ -574,11 +574,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "TrendInstalled"
+                  "Property": "LegacyAvInstalled"
                 }
               },
-              "queryRef": "DeviceHealth.TrendInstalled",
-              "nativeQueryRef": "TrendInstalled"
+              "queryRef": "DeviceHealth.LegacyAvInstalled",
+              "nativeQueryRef": "LegacyAvInstalled"
             },
             {
               "field": {
@@ -588,11 +588,11 @@
                       "Entity": "DeviceHealth"
                     }
                   },
-                  "Property": "TrendProduct"
+                  "Property": "LegacyAvProduct"
                 }
               },
-              "queryRef": "DeviceHealth.TrendProduct",
-              "nativeQueryRef": "TrendProduct"
+              "queryRef": "DeviceHealth.LegacyAvProduct",
+              "nativeQueryRef": "LegacyAvProduct"
             }
           ]
         }

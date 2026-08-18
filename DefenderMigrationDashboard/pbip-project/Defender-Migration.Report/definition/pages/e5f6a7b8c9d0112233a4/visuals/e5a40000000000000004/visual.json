@@ -5,7 +5,7 @@
     "x": 20,
     "y": 250,
     "z": 3,
-    "height": 444,
+    "height": 208,
     "width": 360,
     "tabOrder": 3
   },
@@ -178,13 +178,13 @@
                 "Column": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
                   "Property": "MigrationStatus"
                 }
               },
-              "queryRef": "TrendMigration.MigrationStatus",
+              "queryRef": "LegacyAvMigration.MigrationStatus",
               "nativeQueryRef": "MigrationStatus"
             }
           ]
@@ -196,14 +196,14 @@
                 "Measure": {
                   "Expression": {
                     "SourceRef": {
-                      "Entity": "TrendMigration"
+                      "Entity": "LegacyAvMigration"
                     }
                   },
-                  "Property": "Trend Source Devices"
+                  "Property": "Legacy Source Devices"
                 }
               },
-              "queryRef": "TrendMigration.Trend Source Devices",
-              "nativeQueryRef": "Trend Source Devices"
+              "queryRef": "LegacyAvMigration.Legacy Source Devices",
+              "nativeQueryRef": "Legacy Source Devices"
             }
           ]
         }

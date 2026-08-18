@@ -100,7 +100,7 @@
                     }
                   },
                   {
-                    "value": "— share of devices moved off Trend Micro onto Microsoft Defender.",
+                    "value": "— share of devices moved off your legacy AV/EDR tools onto Microsoft Defender.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -120,7 +120,7 @@
                     }
                   },
                   {
-                    "value": "— machines still on Trend Micro, waiting to be migrated.",
+                    "value": "— machines still running a legacy AV/EDR agent, waiting to be migrated.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -220,7 +220,7 @@
                     }
                   },
                   {
-                    "value": "— the donut: green = fully migrated & configured, amber = onboarded but needs attention, red = not onboarded yet discovered and on the ingested Trend list, grey = only on the Trend list (Defender has never seen it).",
+                    "value": "— the donut: green = fully migrated & configured, amber = onboarded but needs attention, red = not onboarded yet discovered and on the ingested legacy AV/EDR list, grey = only on the legacy AV/EDR list (Defender has never seen it).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -232,7 +232,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Not Onboarded In Trend  ",
+                    "value": "Not Onboarded In Legacy AV  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -240,7 +240,7 @@
                     }
                   },
                   {
-                    "value": "— the red slice — discovered devices still on Trend, ready to onboard.",
+                    "value": "— the red slice — discovered devices still running a legacy AV/EDR agent, ready to onboard.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -252,7 +252,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Trend Only Devices  ",
+                    "value": "Legacy AV Only Devices  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -260,7 +260,7 @@
                     }
                   },
                   {
-                    "value": "— the grey slice — on the Trend list but never discovered by Defender.",
+                    "value": "— the grey slice — on the legacy AV/EDR list but never discovered by Defender.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -388,7 +388,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "TREND MIGRATION — the ingested Trend list",
+                    "value": "LEGACY AV MIGRATION — the ingested third-party list",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "11pt",
@@ -400,7 +400,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Trend Source Devices  ",
+                    "value": "Legacy Source Devices  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -408,7 +408,7 @@
                     }
                   },
                   {
-                    "value": "— total devices in the imported Trend Micro export.",
+                    "value": "— total devices across all imported legacy AV/EDR exports.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -420,7 +420,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Trend Migrated / Migration %  ",
+                    "value": "Legacy Migrated / Legacy Migration %  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -468,7 +468,7 @@
                     }
                   },
                   {
-                    "value": "— on the Trend list but never discovered by Defender (the grey population / blind spots).",
+                    "value": "— on the legacy AV/EDR list but never discovered by Defender (the grey population / blind spots).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -488,7 +488,7 @@
                     }
                   },
                   {
-                    "value": "— needs an ingested Trend CSV; the page stays empty until you import one (see README).",
+                    "value": "— needs an ingested legacy AV/EDR CSV; the page stays empty until you import one (see README).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",

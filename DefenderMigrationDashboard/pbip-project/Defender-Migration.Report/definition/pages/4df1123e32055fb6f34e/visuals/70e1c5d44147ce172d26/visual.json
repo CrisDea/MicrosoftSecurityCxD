@@ -313,7 +313,7 @@
                     },
                     "Right": {
                       "Literal": {
-                        "Value": "'Not onboarded - discovered & in Trend'"
+                        "Value": "'Not onboarded - discovered \u0026 in legacy AV'"
                       }
                     }
                   }
@@ -395,7 +395,7 @@
                     },
                     "Right": {
                       "Literal": {
-                        "Value": "'Trend only - not discovered'"
+                        "Value": "'Legacy AV only - not discovered'"
                       }
                     }
                   }

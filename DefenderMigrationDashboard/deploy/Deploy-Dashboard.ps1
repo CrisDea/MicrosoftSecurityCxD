@@ -76,7 +76,7 @@
 
 .PARAMETER Force
     Deploy even when the version check finds the workspace is already at (or newer than) the local
-    version. Use it to refresh live data or re-seed the trend/AV/Trend-migration tables without a
+    version. Use it to refresh live data or re-seed the trend/AV/legacy-migration tables without a
     version bump.
 
 .PARAMETER SkipVersionCheck
@@ -100,21 +100,30 @@
     Service-principal credentials (alternative to -ConfigPath). With -TenantId these switch the
     script to non-interactive client-credentials auth.
 
-.PARAMETER TrendCsv
-    Optional path to a Trend Micro device export (CSV). When supplied, each Trend device is matched
-    against the current Defender inventory on an exact short hostname (fuzzy tolerance on the DNS
-    domain suffix only) and the mapping is materialised into the TrendMigration table (drives the
-    Migration Overview "Trend -> Defender" visuals). Omit it to leave the mapping empty. Can also be
-    set as "trendCsv" in config.json.
+.PARAMETER LegacyCsv
+    Optional path to a third-party AV/EDR device export (CSV) - Trend Micro, Symantec, McAfee/Trellix,
+    Sophos, CrowdStrike, SentinelOne, Kaspersky, ESET, Carbon Black, Cortex XDR, and others. When
+    supplied, each legacy device is matched against the current Defender inventory on an exact short
+    hostname (fuzzy tolerance on the DNS domain suffix only) and the mapping is materialised into the
+    LegacyAvMigration table (drives the "Legacy AV Migration" page). Every ingested row is stamped
+    with its own LegacyProduct/LegacyVendor, so several tools can be tracked side by side. Omit it to
+    leave the mapping empty. Can also be set as "legacyCsv" in config.json. Alias: -TrendCsv.
 
-.PARAMETER TrendMode
-    Replace (default) uses the supplied export as the entire Trend list; Append merges it into the
-    git-ignored local master store (deploy\trend-inventory.local.csv), de-duplicating on the Trend
-    tool's unique id so only new devices are added. Can also be set as "trendMode" in config.json.
+.PARAMETER LegacyMode
+    Replace (default) uses the supplied export as the entire legacy list; Append merges it into the
+    git-ignored local master store (deploy\legacy-inventory.local.csv), de-duplicating on the source
+    tool's unique id so only new devices are added. Use Append to build one list from SEVERAL AV/EDR
+    products - Replace would discard the other vendors' devices. Can also be set as "legacyMode" in
+    config.json. Alias: -TrendMode.
 
-.PARAMETER TrendSource
-    Optional override for the Trend product label (for example "Apex One" / "Deep Security"); omit
-    to auto-detect from the export header. Can also be set as "trendSource" in config.json.
+.PARAMETER LegacyProduct
+    Optional override for the product label (for example "Trend Micro Apex One" / "CrowdStrike
+    Falcon"); omit to auto-detect from the export header signature. Can also be set as
+    "legacyProduct" in config.json. Alias: -TrendSource.
+
+.PARAMETER LegacyVendor
+    Optional override for the vendor label (for example "Trend Micro" / "Broadcom"); inferred from
+    the built-in catalog when the product is recognised.
 
 .PARAMETER MatchThreshold
     Similarity score (0-100) at or above which a differing DNS domain suffix is still accepted for a
@@ -168,16 +177,18 @@ param(
     [string]$ConfigPath,
     [string]$ClientId,
     [string]$ClientSecret,
-    [string]$TrendCsv,
-    [ValidateSet('Replace','Append')][string]$TrendMode = 'Replace',
-    [string]$TrendInventoryStore,
-    [string]$TrendSource,
+    [Alias('TrendCsv')][string]$LegacyCsv,
+    [Alias('TrendMode')][ValidateSet('Replace','Append')][string]$LegacyMode = 'Replace',
+    [Alias('TrendInventoryStore')][string]$LegacyInventoryStore,
+    [Alias('TrendSource')][string]$LegacyProduct,
+    [string]$LegacyVendor,
     [ValidateRange(0, 100)][int]$MatchThreshold = 82,
     [ValidateRange(0, 3650)][int]$RemovedAfterDays = 0
 )
 
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\_Common.ps1"
+Test-PowerShellBaseline
 
 try {
     # ---- guided mode when launched with no parameters -----------------------
@@ -186,7 +197,9 @@ try {
         $wz = Start-DeployWizard -ScriptRoot $PSScriptRoot
         if ($wz.ConfigPath)       { $ConfigPath       = $wz.ConfigPath }
         if ($wz.WorkspaceId)      { $WorkspaceId      = $wz.WorkspaceId }
-        if ($wz.TrendCsv)         { $TrendCsv         = $wz.TrendCsv }
+        if ($wz.LegacyCsv)        { $LegacyCsv        = $wz.LegacyCsv }
+        if ($wz.LegacyProduct)    { $LegacyProduct    = $wz.LegacyProduct }
+        if ($wz.LegacyMode)       { $LegacyMode       = $wz.LegacyMode }
         if ($wz.CheckVersionOnly) { $CheckVersionOnly = $true }
         if ($wz.Force)            { $Force            = $true }
         if ($wz.SelectWorkspace)  { $SelectWorkspace  = $true }
@@ -287,7 +300,7 @@ try {
         if ($verInfo.IsCurrent -and -not $Force) {
             Write-Host ""
             Write-Ok "Workspace is already at the latest version (v$($verInfo.Deployed)) - nothing to update."
-            Write-Ok "Re-run with -Force to redeploy anyway (e.g. to refresh live data or re-seed the trend / AV / Trend-migration tables)."
+            Write-Ok "Re-run with -Force to redeploy anyway (e.g. to refresh live data or re-seed the trend / AV / legacy-migration tables)."
             exit 0
         }
         if ($verInfo.WorkspaceAhead -and -not $Force) {
@@ -302,15 +315,22 @@ try {
     if ($RemovedAfterDays -gt 0) { Write-Ok "Removed-device cutoff: dropping devices not seen in the last $RemovedAfterDays days" }
     $seedOverride = New-TrendSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret
     $avOverride = New-AvPostureSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -RemovedAfterDays $RemovedAfterDays
-    if (-not $TrendCsv -and $cfg.ContainsKey('trendCsv')) { $TrendCsv = $cfg.trendCsv }
-    if (-not $PSBoundParameters.ContainsKey('TrendMode') -and $cfg.ContainsKey('trendMode')) { $TrendMode = [string]$cfg.trendMode }
-    if (-not $TrendSource -and $cfg.ContainsKey('trendSource')) { $TrendSource = $cfg.trendSource }
-    if (-not $TrendInventoryStore -and $cfg.ContainsKey('trendInventoryStore')) { $TrendInventoryStore = $cfg.trendInventoryStore }
-    $trendMapOverride = New-TrendMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -TrendCsv $TrendCsv -MatchThreshold $MatchThreshold -TrendMode $TrendMode -InventoryStore $TrendInventoryStore -TrendSource $TrendSource
+    if (-not $LegacyCsv -and $cfg.ContainsKey('legacyCsv')) { $LegacyCsv = $cfg.legacyCsv }
+    if (-not $LegacyCsv -and $cfg.ContainsKey('trendCsv'))  { $LegacyCsv = $cfg.trendCsv }
+    if (-not $PSBoundParameters.ContainsKey('LegacyMode')) {
+        if     ($cfg.ContainsKey('legacyMode')) { $LegacyMode = [string]$cfg.legacyMode }
+        elseif ($cfg.ContainsKey('trendMode'))  { $LegacyMode = [string]$cfg.trendMode }
+    }
+    if (-not $LegacyProduct -and $cfg.ContainsKey('legacyProduct')) { $LegacyProduct = $cfg.legacyProduct }
+    if (-not $LegacyProduct -and $cfg.ContainsKey('trendSource'))   { $LegacyProduct = $cfg.trendSource }
+    if (-not $LegacyVendor  -and $cfg.ContainsKey('legacyVendor'))  { $LegacyVendor  = $cfg.legacyVendor }
+    if (-not $LegacyInventoryStore -and $cfg.ContainsKey('legacyInventoryStore')) { $LegacyInventoryStore = $cfg.legacyInventoryStore }
+    if (-not $LegacyInventoryStore -and $cfg.ContainsKey('trendInventoryStore'))  { $LegacyInventoryStore = $cfg.trendInventoryStore }
+    $legacyMapOverride = New-LegacyMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -LegacyCsv $LegacyCsv -MatchThreshold $MatchThreshold -LegacyMode $LegacyMode -InventoryStore $LegacyInventoryStore -SourceProduct $LegacyProduct -SourceVendor $LegacyVendor
     $overrides = @{}
-    if ($seedOverride)     { foreach ($k in $seedOverride.Keys)     { $overrides[$k] = $seedOverride[$k] } }
-    if ($avOverride)       { foreach ($k in $avOverride.Keys)       { $overrides[$k] = $avOverride[$k] } }
-    if ($trendMapOverride) { foreach ($k in $trendMapOverride.Keys) { $overrides[$k] = $trendMapOverride[$k] } }
+    if ($seedOverride)      { foreach ($k in $seedOverride.Keys)      { $overrides[$k] = $seedOverride[$k] } }
+    if ($avOverride)        { foreach ($k in $avOverride.Keys)        { $overrides[$k] = $avOverride[$k] } }
+    if ($legacyMapOverride) { foreach ($k in $legacyMapOverride.Keys) { $overrides[$k] = $legacyMapOverride[$k] } }
     if ($overrides.Count -eq 0) { $overrides = $null }
     if ($isLive) { Write-Ok "Live model: DeviceHealth binds to Defender via a Service Principal; trend history + AV posture materialised at deploy" }
     $modelId = Publish-Item -WsId $WorkspaceId -Type "SemanticModel" -DisplayName $ModelName -Parts (Get-Parts $modelDir $overrides)
@@ -368,3 +388,4 @@ catch {
     Write-Err "It's safe to run the script again once the cause is resolved."
     exit 1
 }
+

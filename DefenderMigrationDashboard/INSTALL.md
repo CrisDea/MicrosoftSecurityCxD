@@ -185,7 +185,7 @@ Missing items are treated as already-clean, so both are safe to re-run.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `PowerShell 5.1 or later is required` | Old Windows PowerShell | Install PowerShell 7 (`winget install Microsoft.PowerShell`). |
+| `PowerShell 5.1 or later is required` | PowerShell older than 5.1 | Update to Windows PowerShell 5.1 (Windows Management Framework 5.1), or install PowerShell 7 (`winget install Microsoft.PowerShell`). |
 | `Azure CLI (az) was not found` | `az` not on PATH | Install Azure CLI, or use service-principal auth (`-ConfigPath`). |
 | `This dashboard queries Microsoft Defender live and needs an Entra app registration` | No app creds supplied | Pass `-ConfigPath ./deploy/config.json` (or `-TenantId -ClientId -ClientSecret`). Run Bootstrap first. |
 | `Workspace '…' has no … capacity assigned` | Workspace not on a capacity | Assign a Fabric/Premium/PPU capacity, or pass `-CapacityId` to create a new workspace. |
@@ -198,3 +198,4 @@ Missing items are treated as already-clean, so both are safe to re-run.
 For a fix for each error code the deployment can return, see [FAILURE-CODES.md](FAILURE-CODES.md).
 If a run fails it stops with a clear message and no half-finished changes, so it's always safe to
 run again once you've sorted the cause.
+

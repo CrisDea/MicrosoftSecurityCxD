@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Machines fully migrated to Defender and correctly configured | Trend Micro → Microsoft Defender",
+                    "value": "Machines fully migrated to Defender and correctly configured | Legacy AV/EDR → Microsoft Defender",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
