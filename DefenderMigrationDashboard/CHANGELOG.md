@@ -6,6 +6,32 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.20.01] — 2026-08-20
+
+### Fixed
+- **Upgrading a pre-2.x deployment no longer empties the migration table (data loss).**
+  Releases before the vendor-neutral rename stored ingested devices in
+  `deploy/trend-inventory.local.csv`; the current release reads
+  `deploy/legacy-inventory.local.csv`. The interactive wizard and `Import-LegacyAvInventory.ps1`
+  already handled the old filename, but `New-LegacyMigrationSeedOverride` — the function the
+  non-interactive `Deploy-Dashboard.ps1` path actually uses to build the published seed — did not.
+  Re-deploying over an existing workspace therefore republished the semantic model with an EMPTY
+  `LegacyAvMigration` table, silently discarding every previously ingested device. The seed builder
+  now adopts the pre-2.x store automatically (copying it to the new name, or reading it in place if
+  the copy fails).
+- **A failed Defender lookup can no longer overwrite live migration data.** If the Defender API call
+  failed mid-deploy (expired secret, missing permissions, transient outage) the mapping was skipped
+  and an empty table was published over a workspace that already held data, because
+  `updateDefinition` REPLACES the table rather than merging it. The deploy now fails with an
+  explanatory error whenever devices are already ingested, leaving the live table untouched.
+
+### Added
+- `-AllowEmptyLegacyTable` on `Deploy-Dashboard.ps1`, to publish an empty migration table
+  deliberately (the previous, implicit behaviour) when that is genuinely intended.
+- `deploy/Test-UpgradePath.ps1` — an offline, Windows PowerShell 5.1 compatible regression suite
+  (33 assertions) proving a pre-2.x deployment upgrades in place without losing data, that
+  multi-vendor rows keep their originating product, and that no model or report binding still
+  references the pre-2.x `TrendMigration` table.
 ## [2026.08.19.01] — 2026-08-19
 
 ### Added

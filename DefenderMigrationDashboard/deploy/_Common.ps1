@@ -1854,19 +1854,37 @@ function New-LegacyMigrationSeedOverride {
     param([string]$ModelDir, [string]$TenantId, [string]$ClientId, [string]$ClientSecret,
           [string]$LegacyCsv, [int]$MatchThreshold = 82,
           [ValidateSet('Replace','Append')][string]$LegacyMode = 'Replace',
-          [string]$InventoryStore, [string]$SourceProduct, [string]$SourceVendor)
+          [string]$InventoryStore, [string]$SourceProduct, [string]$SourceVendor,
+          [switch]$AllowEmptyLegacyTable)
     $path = Join-Path $ModelDir "definition\tables\LegacyAvMigration.tmdl"
     if (-not (Test-Path -LiteralPath $path)) { return $null }
     $txt = Get-Content -LiteralPath $path -Raw
     if ($txt -notmatch '__LEGACYMIGRATION_SEED_B64__') { return $null }
     if (-not $InventoryStore) { $InventoryStore = Join-Path $PSScriptRoot "legacy-inventory.local.csv" }
+    # Upgrade path: a deployment created by a pre-2.x (Trend-only) release keeps its ingested
+    # devices in trend-inventory.local.csv. Adopt that file on the first vendor-neutral deploy so
+    # an update-in-place carries the existing list forward instead of publishing an empty table.
+    if (-not (Test-Path -LiteralPath $InventoryStore)) {
+        $preTwoStore = Join-Path (Split-Path -Parent $InventoryStore) "trend-inventory.local.csv"
+        if (Test-Path -LiteralPath $preTwoStore) {
+            try {
+                Copy-Item -LiteralPath $preTwoStore -Destination $InventoryStore -Force
+                Write-Ok "Upgrade: adopted the pre-2.x legacy list '$preTwoStore' into '$InventoryStore'."
+            } catch {
+                Write-Warn2 "Could not copy the pre-2.x legacy list ($($_.Exception.Message)); reading it in place."
+                $InventoryStore = $preTwoStore
+            }
+        }
+    }
     $seedJson = "[]"
     $storeExists = Test-Path -LiteralPath $InventoryStore
     if (-not $LegacyCsv -and -not $storeExists) {
         Write-Warn2 "No -LegacyCsv supplied and no saved legacy AV/EDR list found - the migration table will be empty. Pass -LegacyCsv <export.csv> to populate it."
     } else {
+        $hadStoredDevices = $false
         try {
             $existing = Read-LegacyStore -Path $InventoryStore
+            if ($existing.Count -gt 0) { $hadStoredDevices = $true }
             if ($LegacyCsv) {
                 $newRecs = @(Get-LegacyDeviceRecords -CsvPath $LegacyCsv -SourceProduct $SourceProduct -SourceVendor $SourceVendor)
                 $merged  = Merge-LegacyStore -Existing $existing -New $newRecs -Mode $LegacyMode
@@ -1891,6 +1909,16 @@ function New-LegacyMigrationSeedOverride {
             Write-Ok "Legacy migration mapped: $($map.Count) devices - $migr migrated, $pend matched/not onboarded, $miss not in Defender"
             Write-LegacyProductBreakdown -Records $map -WithStatus
         } catch {
+            # Publishing an empty seed over a workspace that already holds migration data would
+            # DESTROY it (updateDefinition replaces the table). When devices were already ingested,
+            # fail the deploy instead so the live table keeps its current contents, and let the
+            # operator opt in explicitly if an empty table really is wanted.
+            if ($hadStoredDevices -and -not $AllowEmptyLegacyTable) {
+                throw ("Could not build the legacy AV/EDR migration mapping ($($_.Exception.Message)). " +
+                       "Refusing to publish an EMPTY migration table over the $(@(Read-LegacyStore -Path $InventoryStore).Count) device(s) already ingested, " +
+                       "because that would overwrite the live data. Fix the cause (usually Defender API credentials/permissions) and re-run, " +
+                       "or pass -AllowEmptyLegacyTable to publish an empty table deliberately.")
+            }
             Write-Warn2 "Could not build the legacy AV/EDR migration mapping ($($_.Exception.Message)). Deploying with an empty migration table."
         }
     }

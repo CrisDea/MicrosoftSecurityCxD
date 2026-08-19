@@ -146,4 +146,64 @@ Updates never lose data you have already ingested:
 - Both stores are **backed up** before every overwrite (timestamped, the last 15 kept, under
   `deploy/backups/`, which is git-ignored).
 
+---
 
+## Upgrading an existing (pre-2.x) deployment
+
+Applies when the workspace already hosts a dashboard published before the vendor-neutral
+release — for example an existing tenant deployment that was ingesting Trend Micro only.
+
+The upgrade is an **update in place**. The semantic model and report keep the display name
+`Defender Migration`, so the deploy locates the existing items and updates their definitions;
+no duplicate item is created and report links, bookmarks and permissions survive.
+
+### What changed under the hood
+
+| Pre-2.x | Current | Handling |
+|---|---|---|
+| `deploy/trend-inventory.local.csv` | `deploy/legacy-inventory.local.csv` | Adopted automatically on first upgraded run |
+| Table `TrendMigration` | Table `LegacyAvMigration` | Rebound in model and report |
+| `TrendSource` / `TrendId` | `LegacyProduct` / `LegacyId` (+ new `LegacyVendor`) | Upgraded on read |
+
+### Steps
+
+1. Pull the current release and keep your existing `deploy/config.json`.
+2. Leave the old `deploy/trend-inventory.local.csv` where it is — do **not** delete it. The
+   deploy copies it to `legacy-inventory.local.csv` and reports
+   `Upgrade: adopted ...` on the run that performs the adoption.
+3. Re-run the deploy. No `-LegacyCsv` is required: with no new export the previously ingested
+   devices are re-used and re-published rather than dropped.
+
+```powershell
+cd DefenderMigrationDashboard\deploy
+.\Deploy-Dashboard.ps1 -ConfigPath .\config.json
+```
+
+4. Confirm the run logs `Legacy list preserved: re-using <n> devices ...` and a non-zero
+   `Legacy migration mapped: <n> devices` before the publish step.
+
+### Adding further vendors after the upgrade
+
+Existing rows keep their original product and vendor labels, so append rather than replace:
+
+```powershell
+.\Deploy-Dashboard.ps1 -ConfigPath .\config.json -LegacyCsv .\crowdstrike-export.csv -LegacyMode Append
+```
+
+A host covered by two tools deliberately remains **two** rows — each agent still has to be removed.
+
+### Data-loss safeguard
+
+Publishing replaces the migration table rather than merging into it. If the Defender lookup fails
+(expired secret, missing `Machine.Read.All`, transient outage) while devices are already ingested,
+the deploy now **fails and leaves the live table untouched** instead of overwriting it with an empty
+one. Fix the cause and re-run. To publish an empty table on purpose, pass `-AllowEmptyLegacyTable`.
+
+### Verifying the upgrade without touching the tenant
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Test-UpgradePath.ps1
+```
+
+Runs fully offline and asserts that a pre-2.x store is adopted, retains every device, keeps
+per-row provenance, and that nothing still binds the old `TrendMigration` table.

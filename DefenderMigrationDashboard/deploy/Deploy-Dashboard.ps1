@@ -182,6 +182,7 @@ param(
     [Alias('TrendInventoryStore')][string]$LegacyInventoryStore,
     [Alias('TrendSource')][string]$LegacyProduct,
     [string]$LegacyVendor,
+    [switch]$AllowEmptyLegacyTable,
     [ValidateRange(0, 100)][int]$MatchThreshold = 82,
     [ValidateRange(0, 3650)][int]$RemovedAfterDays = 0
 )
@@ -326,7 +327,7 @@ try {
     if (-not $LegacyVendor  -and $cfg.ContainsKey('legacyVendor'))  { $LegacyVendor  = $cfg.legacyVendor }
     if (-not $LegacyInventoryStore -and $cfg.ContainsKey('legacyInventoryStore')) { $LegacyInventoryStore = $cfg.legacyInventoryStore }
     if (-not $LegacyInventoryStore -and $cfg.ContainsKey('trendInventoryStore'))  { $LegacyInventoryStore = $cfg.trendInventoryStore }
-    $legacyMapOverride = New-LegacyMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -LegacyCsv $LegacyCsv -MatchThreshold $MatchThreshold -LegacyMode $LegacyMode -InventoryStore $LegacyInventoryStore -SourceProduct $LegacyProduct -SourceVendor $LegacyVendor
+    $legacyMapOverride = New-LegacyMigrationSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -LegacyCsv $LegacyCsv -MatchThreshold $MatchThreshold -LegacyMode $LegacyMode -InventoryStore $LegacyInventoryStore -SourceProduct $LegacyProduct -SourceVendor $LegacyVendor -AllowEmptyLegacyTable:$AllowEmptyLegacyTable
     $overrides = @{}
     if ($seedOverride)      { foreach ($k in $seedOverride.Keys)      { $overrides[$k] = $seedOverride[$k] } }
     if ($avOverride)        { foreach ($k in $avOverride.Keys)        { $overrides[$k] = $avOverride[$k] } }
