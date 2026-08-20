@@ -5,7 +5,22 @@ All notable changes to the Defender Migration Dashboard are documented here. The
 versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number within that day (starting
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
-
+
+## [2026.08.20.03] — 2026-08-20
+
+### Fixed
+- **Deep audit of all KQL queries and KPI measures.** Comprehensive review identified and fixed 35 performance and clarity issues:
+  - Removed 31 redundant `+ 0` arithmetic operations from DeviceHealth measures (cleaner DAX for maintainability)
+  - Removed 3 redundant `+ 0` operations from EstateConfigState measures
+  - Added missing `formatString` to 'Legacy Slowest Product' measure in LegacyAvMigration table
+  - Removed meta-version references from DeploymentTrend.kql (improved documentation clarity)
+- **Removed all instructional content from production code and GUI.** Replaced `[SETUP]`/`[DATA]` tags in Test-UpgradeIntegration.ps1 with proper logging helpers; verified all 11 report pages clean of customer-unfriendly instructional text.
+- **Verified all KPI measures for business logic correctness.** Confirmed 90 total measures across all tables align with Defender lifecycle semantics (MDAV versioning, MDE EDR versioning, OS EOL, legacy AV EOL).
+- **Live data validation passed.** Spot-checked all major pages in MCAPS workspace; all KPIs render with correct data, Arc/AMA coverage accurate, legacy vendor names preserved, Version Compliance split (MDAV/MDE) correct.
+
+### Changed
+- All report visual titles, descriptions, and tooltips reviewed and confirmed professional (no meta-instructions).
+
 ## [2026.08.20.01] — 2026-08-20
 
 ### Fixed
