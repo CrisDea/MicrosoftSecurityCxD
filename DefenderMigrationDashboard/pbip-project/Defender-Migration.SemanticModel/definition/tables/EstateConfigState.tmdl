@@ -16,17 +16,17 @@ table EstateConfigState
 		summarizeBy: none
 		sourceColumn: [DeviceKey]
 
-	measure 'Config State Devices' = COUNTROWS(EstateConfigState) + 0
+	measure 'Config State Devices' = COUNTROWS(EstateConfigState)
 		formatString: 0
 
 	/// Not-onboarded devices that MDE has discovered AND that appear in the
 	/// ingested legacy AV/EDR list (the RED donut slice / migration-ready backlog).
-	measure 'Not Onboarded In Legacy AV' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Not onboarded - discovered & in legacy AV") + 0
+	measure 'Not Onboarded In Legacy AV' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Not onboarded - discovered & in legacy AV")
 		formatString: 0
 
 	/// Devices present only in the ingested legacy AV/EDR list and never discovered by
 	/// MDE (the GREY donut slice) - blind spots MDE software inventory misses.
-	measure 'Legacy AV Only Devices' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Legacy AV only - not discovered") + 0
+	measure 'Legacy AV Only Devices' = CALCULATE(COUNTROWS(EstateConfigState), EstateConfigState[ConfigStateLabel] = "Legacy AV only - not discovered")
 		formatString: 0
 
 	partition EstateConfigState = calculated

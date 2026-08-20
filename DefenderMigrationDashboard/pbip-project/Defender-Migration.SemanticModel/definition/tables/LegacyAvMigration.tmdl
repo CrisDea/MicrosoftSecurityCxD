@@ -113,6 +113,7 @@ table LegacyAvMigration
 			            ", "
 			        )
 			    )
+		formatString: @
 
 	partition LegacyAvMigration = m
 		mode: import

@@ -1,6 +1,5 @@
 let Days = 30d;
-// [ADD 2.9.7] Device -> current group bridge (latest NON-EMPTY MachineGroup) so the migration
-// trend can be split by device group without landing on a blank group.
+// Latest non-empty device group per DeviceId for split-by-group trending
 let GroupMap = DeviceInfo
 | where Timestamp between (ago(Days) .. ago(1m))
 | where isempty(MergedToDeviceId) and isnotempty(MachineGroup)

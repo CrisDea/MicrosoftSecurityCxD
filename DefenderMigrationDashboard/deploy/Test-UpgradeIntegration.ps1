@@ -9,7 +9,7 @@ Write-Host ""
 
 # Set up sandbox
 $sandbox = New-Item -ItemType Directory -Path "$([IO.Path]::GetTempPath())dmd-integration-$(Get-Random)" -Force
-Write-Host "[SETUP] Sandbox: $sandbox" -ForegroundColor Green
+Write-Step "Sandbox: $sandbox"
 cd $sandbox
 
 # Create a pre-2.x store with real data
@@ -20,7 +20,7 @@ $store = @(
     "1003,MCAPS-SRV-001.contoso.com,Trend Micro Apex One"
 ) -join "`r`n"
 [IO.File]::WriteAllText((Join-Path $sandbox "trend-inventory.local.csv"), $store)
-Write-Host "[DATA] Pre-2.x store created: 3 ingested devices"
+Write-Ok "Pre-2.x store created: 3 ingested devices"
 
 # Create a minimal config
 $cfg = @{
