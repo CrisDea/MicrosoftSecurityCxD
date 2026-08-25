@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "f04colb00doc0004",
   "position": {
-    "x": 440,
-    "y": 84,
+    "x": 622.0,
+    "y": 98.0,
     "z": 6070,
-    "height": 624,
-    "width": 400,
+    "height": 688.0,
+    "width": 387.0,
     "tabOrder": 6070
   },
   "visual": {
@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "VERSION COMPLIANCE \u2014 is protection up to date",
+                    "value": "VERSION COMPLIANCE — is protection up to date",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "11pt",
@@ -40,7 +40,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 devices with current antivirus definitions.",
+                    "value": "— devices with current antivirus definitions.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -60,7 +60,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 devices with a current antivirus engine.",
+                    "value": "— devices with a current antivirus engine.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -80,7 +80,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 devices on the newest Defender antivirus platform build.",
+                    "value": "— devices on the newest Defender antivirus platform build.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -100,7 +100,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 devices on the newest Defender sensor version.",
+                    "value": "— devices on the newest Defender sensor version.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -120,7 +120,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 how current a component is: newest, one step back, or significantly old.",
+                    "value": "— how current a component is: newest, one step back, or significantly old.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -140,7 +140,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 devices not on the newest version of at least one component.",
+                    "value": "— devices not on the newest version of at least one component.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -164,7 +164,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "NON-COMPLIANT DEVICES \u2014 what to fix",
+                    "value": "NON-COMPLIANT DEVICES — what to fix",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "11pt",
@@ -184,7 +184,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 machines failing one or more checks.",
+                    "value": "— machines failing one or more checks.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -204,7 +204,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 sensor running but degraded.",
+                    "value": "— sensor running but degraded.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -224,7 +224,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 sensor installed but silent.",
+                    "value": "— sensor installed but silent.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -244,7 +244,7 @@
                     }
                   },
                   {
-                    "value": "\u2014 component badly behind and needs updating.",
+                    "value": "— component badly behind and needs updating.",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",
@@ -268,7 +268,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "CONFIGURATION DRILL-DOWN \u2014 check by check",
+                    "value": "CONFIGURATION DRILL-DOWN — check by check",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "11pt",
@@ -292,7 +292,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "DupDeviceId (new)  ",
+                    "value": "DupDeviceId  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -300,7 +300,131 @@
                     }
                   },
                   {
-                    "value": "\u2014 flags a hostname linked to more than one device record, for investigation.",
+                    "value": "— flags a hostname linked to more than one device record, for investigation.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": " ",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "LEGACY AV MIGRATION — the ingested third-party list",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "11pt",
+                      "color": "#0B4A6F"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Legacy Source Devices  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "— total devices across all imported legacy AV/EDR exports.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Legacy Migrated / Legacy Migration %  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "— of that list, how many are now onboarded to Defender.",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Onboarding Pending  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "— matched to a Defender device but not yet onboarded (the red population).",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Not In Defender  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "— on the legacy AV/EDR list but never discovered by Defender (the grey population / blind spots).",
+                    "textStyle": {
+                      "fontFamily": "Segoe UI",
+                      "fontSize": "9pt",
+                      "color": "#33475B"
+                    }
+                  }
+                ]
+              },
+              {
+                "textRuns": [
+                  {
+                    "value": "Note  ",
+                    "textStyle": {
+                      "fontFamily": "Segoe (Bold)",
+                      "fontSize": "9pt",
+                      "color": "#1B3A57"
+                    }
+                  },
+                  {
+                    "value": "— needs an ingested legacy AV/EDR CSV; the page stays empty until you import one (see README).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",

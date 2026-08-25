@@ -16,15 +16,16 @@ as a Service Principal, seeds the 30-day trend history, and enables scheduled re
 
 ## Screenshots
 
-| Overview | Legacy AV Migration |
+| Overview | Configuration drill-down |
 |---|---|
-| ![Overview](docs/images/overview.png) | ![Legacy AV Migration](docs/images/legacy-av-migration.png) |
+| ![Overview](docs/images/overview.png) | ![Configuration drill-down](docs/images/configuration-drilldown.png) |
 
-| Migration Overview | Device Health |
+| Version compliance | KPI guide |
 |---|---|
-| ![Migration Overview](docs/images/migration-overview.png) | ![Device Health](docs/images/device-health.png) |
+| ![Version compliance](docs/images/version-compliance.png) | ![KPI guide](docs/images/kpi-guide.png) |
 
-> Images are not shipped with the repo — a real screenshot leaks customer device names.
+> Captured from a demo tenant. Only aggregate pages are shipped — the pages that list individual
+> machines are omitted so no device name ever reaches the repository.
 > See [docs/images/README.md](docs/images/README.md) to capture your own.
 
 ---

@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "f03cola00doc0003",
   "position": {
-    "x": 20,
-    "y": 84,
+    "x": 216.0,
+    "y": 98.0,
     "z": 6080,
-    "height": 624,
-    "width": 400,
+    "height": 688.0,
+    "width": 387.0,
     "tabOrder": 6080
   },
   "visual": {
@@ -356,7 +356,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Split by group (new)  ",
+                    "value": "Split by group  ",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -365,130 +365,6 @@
                   },
                   {
                     "value": "— the migration line can now be broken down per device group.",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": " ",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "LEGACY AV MIGRATION — the ingested third-party list",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "11pt",
-                      "color": "#0B4A6F"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "Legacy Source Devices  ",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "9pt",
-                      "color": "#1B3A57"
-                    }
-                  },
-                  {
-                    "value": "— total devices across all imported legacy AV/EDR exports.",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "Legacy Migrated / Legacy Migration %  ",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "9pt",
-                      "color": "#1B3A57"
-                    }
-                  },
-                  {
-                    "value": "— of that list, how many are now onboarded to Defender.",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "Onboarding Pending  ",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "9pt",
-                      "color": "#1B3A57"
-                    }
-                  },
-                  {
-                    "value": "— matched to a Defender device but not yet onboarded (the red population).",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "Not In Defender  ",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "9pt",
-                      "color": "#1B3A57"
-                    }
-                  },
-                  {
-                    "value": "— on the legacy AV/EDR list but never discovered by Defender (the grey population / blind spots).",
-                    "textStyle": {
-                      "fontFamily": "Segoe UI",
-                      "fontSize": "9pt",
-                      "color": "#33475B"
-                    }
-                  }
-                ]
-              },
-              {
-                "textRuns": [
-                  {
-                    "value": "Note  ",
-                    "textStyle": {
-                      "fontFamily": "Segoe (Bold)",
-                      "fontSize": "9pt",
-                      "color": "#1B3A57"
-                    }
-                  },
-                  {
-                    "value": "— needs an ingested legacy AV/EDR CSV; the page stays empty until you import one (see README).",
                     "textStyle": {
                       "fontFamily": "Segoe UI",
                       "fontSize": "9pt",

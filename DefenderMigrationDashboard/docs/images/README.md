@@ -1,18 +1,22 @@
 # Dashboard screenshots
 
-The images referenced by the [README](../README.md) live in this folder. They are **not** committed
-by default — a screenshot of a real tenant contains customer device names, domains and estate size.
+The images referenced by the [README](../README.md) live in this folder.
 
-Capture your own from a **demo or anonymised** tenant.
+Four **aggregate-only** pages are committed. They report counts, percentages, control names and
+OS build strings — never an individual machine. The pages that do list machines (Device Inventory,
+Device Details, Non-Compliant Devices, OS Posture) are deliberately **not** shipped, because a
+screenshot of a real tenant exposes device names, domains and estate size.
 
-## What to capture
+If you replace these with captures of your own, use a **demo or anonymised** tenant.
 
-| File | Page | Frame |
-|------|------|-------|
-| `overview.png` | Overview | Whole canvas, including the estate configuration-state donut |
-| `legacy-av-migration.png` | Legacy AV Migration | Whole canvas — KPI row, status donut, **Migration progress by legacy product** bar chart, detail table |
-| `migration-overview.png` | Migration Overview | Whole canvas |
-| `device-health.png` | Device Health | Whole canvas |
+## What is committed
+
+| File | Page | Why it is safe |
+|------|------|----------------|
+| `overview.png` | Overview | Counts and the estate configuration-state donut only |
+| `configuration-drilldown.png` | Configuration Drill-down | Control names and coverage percentages |
+| `version-compliance.png` | Version Compliance | OS builds and component versions, no device names |
+| `kpi-guide.png` | KPI Guide | Pure documentation, no data at all |
 
 ## How to capture
 
@@ -20,6 +24,9 @@ Capture your own from a **demo or anonymised** tenant.
 2. Set the browser to **100% zoom** and a **1920×1080** window so page proportions match.
 3. Use **View → Full screen** (`Ctrl`+`F11` in the service) to drop the chrome.
 4. Screenshot the canvas only, save as PNG into this folder using the names above.
+
+`deploy/Export-Report.ps1` renders the whole report to PDF, which is the easiest way to get clean,
+chrome-free page images at a consistent size.
 
 ## Before committing
 

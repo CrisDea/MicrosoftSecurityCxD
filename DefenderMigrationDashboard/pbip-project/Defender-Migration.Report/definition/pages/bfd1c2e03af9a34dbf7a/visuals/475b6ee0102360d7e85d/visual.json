@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "475b6ee0102360d7e85d",
   "position": {
-    "x": 20,
-    "y": 92,
+    "x": 216.0,
+    "y": 98.0,
     "z": 5000,
-    "height": 110,
-    "width": 1240,
+    "height": 124.0,
+    "width": 1200.0,
     "tabOrder": 5000
   },
   "visual": {
@@ -224,10 +224,24 @@
       "layout": [
         {
           "properties": {
+            "orientation": {
+              "expr": {
+                "Literal": {
+                  "Value": "0D"
+                }
+              }
+            },
             "columnCount": {
               "expr": {
                 "Literal": {
                   "Value": "4L"
+                }
+              }
+            },
+            "alignment": {
+              "expr": {
+                "Literal": {
+                  "Value": "'middle'"
                 }
               }
             },
@@ -241,29 +255,23 @@
           }
         }
       ],
-      "categoryLabel": [
+      "value": [
         {
+          "selector": {
+            "id": "default"
+          },
           "properties": {
-            "fontSize": {
-              "expr": {
-                "Literal": {
-                  "Value": "9D"
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#0F3D5E'"
+                    }
+                  }
                 }
               }
             },
-            "wordWrap": {
-              "expr": {
-                "Literal": {
-                  "Value": "true"
-                }
-              }
-            }
-          }
-        }
-      ],
-      "calloutValue": [
-        {
-          "properties": {
             "fontSize": {
               "expr": {
                 "Literal": {
@@ -275,6 +283,49 @@
               "expr": {
                 "Literal": {
                   "Value": "true"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "label": [
+        {
+          "selector": {
+            "id": "default"
+          },
+          "properties": {
+            "fontColor": {
+              "solid": {
+                "color": {
+                  "expr": {
+                    "Literal": {
+                      "Value": "'#5B6B7F'"
+                    }
+                  }
+                }
+              }
+            },
+            "fontSize": {
+              "expr": {
+                "Literal": {
+                  "Value": "9D"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "accentBar": [
+        {
+          "selector": {
+            "id": "default"
+          },
+          "properties": {
+            "show": {
+              "expr": {
+                "Literal": {
+                  "Value": "false"
                 }
               }
             }

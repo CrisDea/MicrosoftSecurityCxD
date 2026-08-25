@@ -11,3 +11,4 @@ ref table DeploymentTrend
 ref table Baselines
 ref table LegacyAvMigration
 ref table EstateConfigState
+ref table SecurityControl

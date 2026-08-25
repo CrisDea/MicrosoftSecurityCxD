@@ -6,6 +6,314 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.20.16] - 2026-08-20
+
+### Changed - pages now explain their own numbers instead of looking broken
+Several pages showed technically correct values that were indistinguishable from a failed report,
+because the definition behind the number was never stated:
+- **Overview** reported `Fully Migrated 0`, `Fully Migrated % 0.0%` and `Healthy Devices 0` beside
+  `Total Devices 20`. `Fully Migrated` requires onboarded **and** legacy AV removed **and** all
+  thirteen health signals green, so it stays at 0 until the last signal clears. The subtitle now
+  says so and points at Needs Attention.
+- **Version Compliance** reported `Platform % 100.0%` next to a chart showing four of seven devices
+  as `N/A`. The percentage only covers devices that report the component; the subtitle now states
+  the denominator rather than letting 100% read as whole-estate coverage.
+- **OS Posture** now states that posture is assessed for onboarded devices only, since its
+  `Total Devices` card counts the whole estate.
+- The **Legacy AV** empty-state note was shortened so it no longer overflows its box.
+
+## [2026.08.20.15] - 2026-08-20
+
+### Fixed - the trend double-counted every day after the first deploy
+`ConvertFrom-Json` re-hydrates an ISO date string into a `[datetime]`, so a row read back from the
+history store stringified as `08/25/2026 00:00:00` and keyed differently from the freshly generated
+`2026-08-25T00:00:00Z` - the same day was kept twice and the trend reported 14 onboarded / 26
+remaining against an estate of 20. `Get-TrendHistoryKey` now normalises either form to `yyyy-MM-dd`,
+and `Merge-TrendHistory` rewrites `Date` to one canonical format so the store, the embedded seed and
+the next merge all agree.
+
+### Fixed - `Active Devices` rendered blank instead of 0
+It lacked the `+ 0` guard that its sibling `Stale Devices` already had, so a tenant with no active
+onboarded devices got an empty card rather than a zero.
+
+### Fixed - OS Posture detail table contradicted its own KPI cards
+The table listed all devices while `OSSupportState`, `OSPatchCurrency` and `OSPatchUBR` are only
+computed for onboarded ones, so every visible row read `N/A` while the cards above reported 3
+supported / 2 unsupported. The table is now filtered to onboarded devices and titled accordingly.
+
+### Changed - clearer labels, fewer redundant columns
+- "Active vs stale" is now "Seen in last 7 days", which is what `DeviceStatus` actually measures -
+  a 7-day last-seen window, not Defender's `healthStatus`. The old label read as onboarding health.
+- Device Inventory drops `MigrationStatus` and `OnboardingStatus`: the page is filtered to
+  `OnboardingStatus = 'Onboarded'`, so both were constant on every row (15 columns, was 17).
+- The Mobile empty-state note was shortened so it no longer overflows its box.
+
+## [2026.08.20.14] - 2026-08-20
+
+### Fixed - the trend chart drew from a different device population than the cards beside it
+`DeploymentTrend` was built from the advanced-hunting `DeviceInfo` table while every KPI card on
+the same page came from `GET /api/machines`. Those two sources answer different questions:
+`DeviceInfo` reports devices that have produced telemetry and its `OnboardingStatus` reflects
+discovery state, so it returned *all* devices as `Can be onboarded` (0 onboarded) while the machines
+API returned 7 onboarded of 20. The two disagreed side by side on one page.
+
+The trend is now derived from `GET /api/machines` via `Get-DefenderTrendSnapshot`, applying the same
+merged / excluded / blank-hostname filtering as the `DeviceHealth` table, so the trend and the cards
+are guaranteed to reconcile. Verified live: the trend totals 7 onboarded / 13 remaining / 20 total,
+matching the cards exactly.
+
+Consequences:
+- `deploy/assets/DeploymentTrend.kql` is no longer used and has been removed, along with its
+  preflight check. The trend no longer needs the `AdvancedQuery.Read.All` permission — only
+  `Machine.Read.All`, which the dashboard already required.
+- The retained history was hunting-derived and asserted 0 onboarded devices, which is provably
+  wrong, so it was discarded rather than migrated. History now rebuilds from the machines API and
+  accumulates one snapshot per deploy.
+- The trend line chart now draws point markers, so the first snapshot is visible before enough days
+  have accumulated for a line to render, and carries an explicit title.
+
+## [2026.08.20.13] - 2026-08-20
+
+### Fixed - trend history was silently discarded on every deploy
+The local history store had been written as a collection *envelope*
+(`{"value":[...],"Count":125}`) rather than a bare array: under Windows PowerShell 5.1
+`ConvertTo-Json` serialises an ordered-dictionary value collection's own properties
+instead of enumerating it. Reading it back produced a single object with no `Date`,
+which threw under `Set-StrictMode` and aborted the merge — while the error handler read
+`.Count` *off the envelope* and reported a convincing "re-pushing 125 rows". The trend
+chart was therefore drawing stale figures that contradicted the cards beside it. The
+store is now unwrapped on read, always written as an array, and a malformed row is
+skipped instead of aborting the whole merge.
+
+### Fixed - "Migration %" showed N/A beside a populated Total and Onboarded
+The measure divided by the legacy AV/EDR CSV device count, so without an imported CSV it
+reported N/A next to cards reading 20 and 7 — indistinguishable from a broken tile. It now
+falls back to onboarded / total devices when no CSV is present, and still prefers the
+legacy source estate as the denominator when one has been imported.
+
+### Changed - device tables trimmed to a readable width
+Device Inventory projected all 47 columns, led by a 64-character `DeviceId` hex GUID that
+was both unreadable and the widest column on the page, forcing roughly five screens of
+horizontal scrolling. It now carries 17 columns covering identity, migration state,
+protection and version; the exhaustive record remains on the Device Details drill-through.
+The Non-Compliant follow-up table drops two near-duplicate sensor columns.
+
+### Changed - clearer titles and honest empty states
+The sensor chart's title no longer restates its own colour legend. Truncated titles and the
+Mobile and Legacy AV pages now state why they are empty, so a tenant with no mobile devices
+or no imported export sees an explanation rather than blank panels.
+
+## [2026.08.20.12] - 2026-08-20
+
+### Fixed - "Non-Compliant" card read 0 while the table below it listed devices
+The page states its scope as devices "behind on versions, impaired sensors, or not
+reporting to Defender", but the headline measure tested version state only. Any
+estate whose problem was connectivity rather than versions saw a reassuring 0
+above a list of machines that plainly needed attention. Sensor connectivity is
+now part of the test, so the card agrees with the table beneath it — a device
+that has stopped reporting cannot be shown to be compliant at all.
+
+## [2026.08.20.11] - 2026-08-20
+
+### Fixed - "Total" row would not switch off on any table
+Every table carried a grand-total row that was always blank, because the tables
+list text and version strings rather than additive numbers. The setting to hide
+it had been written as `total.show`, but the table visual reads `total.totals` —
+so the instruction was silently discarded and the row kept rendering. Corrected
+across all nine tables.
+
+### Changed - KPI Guide version marker is now visible
+The marker sat in the 34px subtitle band behind a scrollbar, so the one detail
+support needs first could not actually be read. It moves to the "Good to know"
+panel, and the subtitle trims to the single line that fits.
+
+## [2026.08.20.10] - 2026-08-20
+
+### Fixed - overlapping visuals on Legacy AV Migration
+A leftover section-label textbox sat directly on top of the migration-status
+chart, so its caption was sliced in half by the chart beneath it. The label was
+redundant — the chart already carries the same title — so it is removed and the
+chart reflows into the space, aligning with the mapping table beside it.
+
+### Fixed - dates rendered with a meaningless midnight timestamp
+`LastSeen`, `EOS`, `OSEolDate` and `AVSigLastUpdateTime` displayed as
+"11/12/2019 12:00:00 AM". The query layer already casts all four to date-only,
+so the time was formatting noise that widened every table it appeared in. They
+now use `yyyy-mm-dd`, which is unambiguous across locales and sorts correctly.
+
+### Changed - KPI Guide rebalanced and de-instructed
+The intro told readers to use "the tabs along the bottom", which stopped being
+true when the left navigation rail replaced the page tabs. Column one overflowed
+into a scrollbar and clipped the Legacy AV section mid-sentence while columns two
+and three ended a third empty; that section moves across to balance them.
+Release-note "(new)" markers are dropped — a customer reading the guide has no
+previous version to compare against.
+
+### Removed - last operating instruction
+The Device Inventory caption explained how to right-click for drill-through.
+Every caption in the report now describes its content rather than the tool.
+
+## [2026.08.20.09] - 2026-08-20
+
+### Removed - operating instructions from the report surface
+Four table captions told the reader how to drive Power BI rather than what the table held
+("right-click → Export data for all columns", "click donut slice to filter, then Export
+data"). A customer-facing dashboard should describe its content; the captions now do.
+
+### Added - "Latest published by Microsoft" reference table
+The model already carried Microsoft's published AV signature, AV engine, Defender platform
+and MDE sensor versions, but no visual had ever surfaced them — so Version Compliance
+showed what the estate is running with nothing to compare it against. The reference table
+now sits beside the per-OS-build posture table, which narrows to make room.
+
+### Changed - Overview readability
+The configuration-state legend moves beneath the donut, where the state names fit instead
+of truncating mid-word, and the raw column name is dropped as its heading. The OS
+distribution chart becomes a column chart; as a horizontal bar chart eleven distributions
+in a 148px band rendered as a single row plus a scrollbar.
+
+## [2026.08.20.08] - 2026-08-20
+
+### Fixed - every chart was showing a machine-generated caption
+Thirty-three visuals carried a hand-written title that never reached the screen. The text
+was stored under `visual.objects.title`, but with no container title present Power BI
+ignores it and falls back to an auto-generated caption built from the field names — which
+is why pages read "AV Sig Up To Date, AV Sig Behind and AV Sig Out Of Date by DeviceType"
+instead of the intended "AV signature currency by device type". All titles were promoted
+to `visualContainerObjects.title`, the slot the renderer actually reads, and given
+consistent styling with wrapping disabled so a caption no longer steals two lines of plot
+area from the short charts.
+
+### Fixed - three KPI cards read "- -" instead of a number
+`Fully Migrated %`, `Legacy Migration %` and `Platform Outdated` still returned BLANK on an
+estate where the numerator is legitimately zero. They now return 0 (and `Platform Outdated`
+keeps its "N/A" answer for the separate case where no device can be graded at all).
+
+### Fixed - Overview rendered three empty white boxes
+The device-type, cloud-location and OS-distribution charts plotted only an achievement
+measure, so at the start of a migration — exactly when a customer first opens the
+dashboard — they had nothing to draw. Each now plots estate size alongside the achievement
+measure, so there is always a bar and the gap between the two series is the point.
+
+### Changed - tables and rail
+Table headers wrap instead of truncating mid-word, body text is 9pt with row wrapping off,
+and the permanently empty "Total" row is gone. Two rail captions are abbreviated so they
+fit the 160px rail without clipping.
+
+
+### Fixed - navigation rail labels, definitively
+2026.08.20.06 corrected the formatting-payload *shape* for the rail buttons and the result was
+still an empty rail — worse, in fact: the outline disappeared but no text arrived. Rendering the
+published report twice isolated the real rule. On an `actionButton`, entries that carry a
+`selector` are silently discarded by the service, and every styled property (the caption text,
+its colour, the fill) lived in exactly such an entry; only the selector-free `show` toggles were
+ever being honoured, which is why turning the outline *off* worked while turning the text *on*
+did not.
+
+The fix stops relying on the button's own formatting cards altogether. In PBIR only
+`visualContainerObjects` is schema-typed, so the caption now lives in the container `title` and
+the selected-page highlight in the container `background` — both guaranteed to be parsed. Button
+height dropped from 54 px to 30 px so the caption fills the item the way a normal navigation list
+does, and 12 px of left padding indents it off the rail edge.
+
+
+### Fixed - navigation rail labels were invisible
+The 2026.08.20.05 rail replaced the page-navigator visual with one action button per page,
+which fixed the layout — but the buttons rendered as empty outlined rectangles with no text.
+The cause was the shape of the formatting payload rather than the values in it. Power BI
+requires a state-based formatting card (`text`, `fill`, `outline`, `icon`) to carry its `show`
+toggle in its **own entry with no selector**, and the styled properties in a **second entry**
+carrying `selector: { "id": "default" }`. Both had been written into a single selector-scoped
+entry, so the service discarded every one of them: the label never appeared, and the outline
+that was explicitly switched off stayed on. All 110 buttons have been regenerated with the
+correct two-entry shape and now render as a legible vertical rail with the current page
+highlighted.
+
+### Fixed - KPI cards ignored every font setting
+All eight KPI card visuals in the report are `cardVisual` (the modern card), but their
+formatting objects were named `calloutValue` and `categoryLabel` — the names used by the
+**legacy** `card` visual. The names did not match, so the service dropped them and every card
+had been rendering at its default size rather than the intended 19-20 pt. The most visible
+symptom was the Configuration Drill-down "Weakest Control" card, whose text value was
+truncated to `Tamper |`. The objects are now `value` and `label` with the correct `fontColor`
+property, and the layout uses `columnCount` rather than the non-existent `cardsPerRow`.
+
+### Changed
+- Card callout on Configuration Drill-down set to 17 pt so the longest control name fits
+  without truncation.
+
+## [2026.08.20.05] - 2026-08-20
+
+### Fixed - navigation rail rendered unusable
+The 2026.08.20.04 navigation rail used the built-in **page navigator** visual inside a
+160 px column. That visual only lays its buttons out horizontally, so eleven buttons were
+compressed to roughly 14 px each and their labels rendered as unreadable vertical stripes on
+every page. The page navigator has been replaced with explicit navigation buttons - one per
+visible page, stacked vertically, with the current page highlighted. Navigation is now
+legible, keyboard-reachable and shows you where you are.
+
+### Fixed - page titles and subtitles were clipped
+Page titles were set in 20 pt inside a 38 px band, which cut the tops and descenders off
+every heading and produced a scrollbar in the header. Titles are now 19 pt in a 46 px band.
+Five subtitles overflowed their band - the Legacy AV/EDR subtitle ran to 423 characters -
+and have been rewritten concisely. Content placement is unchanged.
+
+### Fixed - KPI cards showed "- -" instead of 0
+Counting measures built on CALCULATE(COUNTROWS(...), <filter>) return BLANK when no rows
+match, which a card renders as "- -". On a security dashboard that is actively misleading:
+"0 devices with an end-of-life OS" is good news, but "- -" reads as a broken report. The 24
+count measures bound to KPI cards now return 0 when the estate genuinely has none. BLANK is
+reserved for "not applicable". Measures used only in charts are unchanged, so charts keep
+omitting empty categories rather than drawing rows of zeros.
+
+### Changed - Configuration Drill-down and chart legibility
+- The control detail table was too narrow for its numeric columns; the ranked bar chart now
+  takes 640 px and the table 544 px, with wrapped column headers.
+- The KPI callout was reduced to 19 pt so long control names are no longer truncated.
+- Redundant axis titles were removed from 23 charts. The visual title already names the
+  field, so "DeviceType" repeated beneath the axis was noise.
+
+## [2026.08.20.04] — 2026-08-20
+
+### Changed
+- **Full UX revamp of the report.** The dashboard was rebuilt around an explicit design system
+  instead of eleven independently laid-out pages:
+  - **Canvas rebased to 1440×810** (from 1280×720). The extra width pays for the navigation rail
+    without shrinking the content area — content is 1200px wide versus 1240px before — and the extra
+    height gives every page 688px of usable content band instead of ~610px.
+  - **Persistent left navigation rail on every page.** A page navigator in a 200px rail replaces
+    reliance on the Power BI tab strip, so all eleven pages are reachable in one click from anywhere.
+    Previously there was no in-report navigation at all.
+  - **Standardised vertical rhythm.** Page title now always sits at y=16 (h=38) and the subtitle at
+    y=54 (h=32), with content starting at y=98 and ending at y=786 on every page. Content start
+    positions previously varied between 58px and 214px across pages.
+  - **Device Inventory gained a page title and subtitle**; it previously rendered a bare table with
+    no heading. **Non-Compliant Devices** and **OS Posture** gained the subtitles they were missing.
+  - **Type scale rebalanced** for the larger canvas (page titles 18pt→20pt, visual titles 12→13,
+    labels/axes/legends 9→10) so effective on-screen text size is preserved, not reduced.
+  - **Theme extended** with table, matrix and slicer styling (header fill, row banding, 4px row
+    padding, hairline horizontal gridlines only) and softer, more diffuse card shadows.
+
+### Fixed
+- **Configuration Drill-down rebuilt — the twelve pie charts were reporting misleading numbers.**
+  Each pie plotted `Total Devices` split by a control's raw state, which meant devices reporting
+  `N/A` for a control were counted in that control's denominator. Tamper Protection, for example,
+  is not applicable on Linux, and no control reports for a device that is not onboarded — so every
+  pie understated true coverage by an amount that varied per control and per estate mix.
+  - Added a disconnected **`SecurityControl`** dimension (12 rows) plus measures that compute
+    coverage as *healthy ÷ applicable*, explicitly excluding `N/A` from the denominator. The table
+    carries no relationship by design: every measure evaluates against `DeviceHealth` inside
+    `CALCULATE`, so all fourteen page filters continue to apply exactly as before.
+  - `Antivirus mode` is now scored correctly against `Active` rather than `GOOD`, and `Unknown` is
+    excluded from its denominator — the previous pie treated `Unknown` as a real state.
+  - The twelve pies are replaced by a **single ranked bar chart** (worst control first), a **KPI
+    strip** (devices in scope, average coverage, controls below the 90% target, weakest control and
+    its coverage) and a **detail table** giving applicable / healthy / gap counts per control.
+    Twelve pies could show twelve values but could not rank them; ranking is the entire question
+    this page exists to answer.
+- Corrected overlapping visuals on **Legacy AV Migration** (2px) and **KPI Guide** (6px), and
+  aligned the Legacy AV Migration table to the section label beside it.
+
 ## [2026.08.20.03] — 2026-08-20
 
 ### Fixed

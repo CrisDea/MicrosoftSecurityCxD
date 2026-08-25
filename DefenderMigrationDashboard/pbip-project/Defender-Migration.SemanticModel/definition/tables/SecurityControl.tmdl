@@ -1,0 +1,138 @@
+/// Disconnected control dimension that turns the twelve individual Defender
+/// configuration / version columns on DeviceHealth into a single ranked list.
+/// It carries no relationship on purpose: every measure evaluates against
+/// DeviceHealth inside CALCULATE, so all page and report filters still apply.
+/// Devices where a control cannot apply (for example Tamper Protection on Linux,
+/// or anything not onboarded) report "N/A" and are excluded from the denominator,
+/// which is what the previous per-control pie charts got wrong.
+table SecurityControl
+
+	column Control
+		dataType: string
+		summarizeBy: none
+		sourceColumn: [Control]
+		sortByColumn: 'Sort Order'
+
+	/// Control family used to group the ranked list.
+	column 'Control Group'
+		dataType: string
+		summarizeBy: none
+		sourceColumn: [Control Group]
+
+	column 'Sort Order'
+		dataType: int64
+		summarizeBy: none
+		sourceColumn: [Sort Order]
+		isHidden
+
+	/// Devices where the selected control is applicable and reporting.
+	measure 'Control Applicable Devices' =
+			VAR c = SELECTEDVALUE(SecurityControl[Control])
+			RETURN
+				SWITCH(
+					c,
+						"Real-time protection", CALCULATE([Total Devices], DeviceHealth[RealtimeProtection] <> "N/A"),
+						"Cloud-delivered protection", CALCULATE([Total Devices], DeviceHealth[CloudProtection] <> "N/A"),
+						"Behaviour monitoring", CALCULATE([Total Devices], DeviceHealth[BehaviorMonitoring] <> "N/A"),
+						"PUA protection", CALCULATE([Total Devices], DeviceHealth[PUAProtection] <> "N/A"),
+						"Antivirus mode (active)", CALCULATE([Total Devices], DeviceHealth[AVMode] <> "N/A", DeviceHealth[AVMode] <> "Unknown"),
+						"Network protection", CALCULATE([Total Devices], DeviceHealth[NetworkProtection] <> "N/A"),
+						"Tamper protection", CALCULATE([Total Devices], DeviceHealth[TamperProtection] <> "N/A"),
+						"AV platform version", CALCULATE([Total Devices], DeviceHealth[AVPlatformCompliant] <> "N/A"),
+						"AV engine version", CALCULATE([Total Devices], DeviceHealth[AVEngineCompliant] <> "N/A"),
+						"AV signature currency", CALCULATE([Total Devices], DeviceHealth[AVSigCompliant] <> "N/A"),
+						"EDR sensor version", CALCULATE([Total Devices], DeviceHealth[SensorCompliant] <> "N/A"),
+						"OS update currency", CALCULATE([Total Devices], DeviceHealth[OSUpdated] <> "N/A"),
+						BLANK()
+					)
+		formatString: #,0
+
+	/// Devices where the selected control is applicable and in a healthy state.
+	measure 'Control Healthy Devices' =
+			VAR c = SELECTEDVALUE(SecurityControl[Control])
+			VAR n =
+				SWITCH(
+					c,
+						"Real-time protection", CALCULATE([Total Devices], DeviceHealth[RealtimeProtection] = "GOOD"),
+						"Cloud-delivered protection", CALCULATE([Total Devices], DeviceHealth[CloudProtection] = "GOOD"),
+						"Behaviour monitoring", CALCULATE([Total Devices], DeviceHealth[BehaviorMonitoring] = "GOOD"),
+						"PUA protection", CALCULATE([Total Devices], DeviceHealth[PUAProtection] = "GOOD"),
+						"Antivirus mode (active)", CALCULATE([Total Devices], DeviceHealth[AVMode] = "Active"),
+						"Network protection", CALCULATE([Total Devices], DeviceHealth[NetworkProtection] = "GOOD"),
+						"Tamper protection", CALCULATE([Total Devices], DeviceHealth[TamperProtection] = "GOOD"),
+						"AV platform version", CALCULATE([Total Devices], DeviceHealth[AVPlatformCompliant] = "GOOD"),
+						"AV engine version", CALCULATE([Total Devices], DeviceHealth[AVEngineCompliant] = "GOOD"),
+						"AV signature currency", CALCULATE([Total Devices], DeviceHealth[AVSigCompliant] = "GOOD"),
+						"EDR sensor version", CALCULATE([Total Devices], DeviceHealth[SensorCompliant] = "GOOD"),
+						"OS update currency", CALCULATE([Total Devices], DeviceHealth[OSUpdated] = "GOOD"),
+						BLANK()
+					)
+			RETURN
+				IF([Control Applicable Devices] > 0, n + 0, BLANK())
+		formatString: #,0
+
+	/// Applicable devices that are NOT in a healthy state - the remediation backlog.
+	measure 'Control Gap Devices' = [Control Applicable Devices] - [Control Healthy Devices]
+		formatString: #,0
+
+	/// Share of applicable devices in a healthy state. N/A devices are excluded.
+	measure 'Control Healthy %' = DIVIDE([Control Healthy Devices], [Control Applicable Devices])
+		formatString: 0.0%
+
+	/// Devices in scope where the control does not apply or does not report.
+	measure 'Control Not Applicable Devices' = [Total Devices] - [Control Applicable Devices]
+		formatString: #,0
+
+	/// Lowest control coverage across every control, ignoring any control selection.
+	measure 'Weakest Control Coverage' = MINX(ALL(SecurityControl[Control]), [Control Healthy %])
+		formatString: 0.0%
+
+	/// Name of the control with the lowest coverage - drives the headline callout.
+	measure 'Weakest Control' =
+			VAR Worst = [Weakest Control Coverage]
+			RETURN
+				CALCULATE(
+					MAX(SecurityControl[Control]),
+					FILTER(ALL(SecurityControl[Control]), [Control Healthy %] = Worst)
+				)
+
+	/// Number of controls whose coverage is below the 90% target.
+	measure 'Controls Below Target' =
+			COUNTROWS(
+				FILTER(
+					ALL(SecurityControl[Control]),
+					NOT ISBLANK([Control Healthy %]) && [Control Healthy %] < 0.9
+				)
+			)
+		formatString: 0
+
+	/// Mean coverage across all evaluated controls.
+	measure 'Average Control Coverage' =
+			AVERAGEX(
+				FILTER(ALL(SecurityControl[Control]), NOT ISBLANK([Control Healthy %])),
+				[Control Healthy %]
+			)
+		formatString: 0.0%
+
+	partition SecurityControl = calculated
+		mode: import
+		source =
+				DATATABLE(
+					"Control", STRING,
+					"Control Group", STRING,
+					"Sort Order", INTEGER,
+					{
+					{ "Real-time protection", "Antivirus configuration", 1 },
+					{ "Cloud-delivered protection", "Antivirus configuration", 2 },
+					{ "Behaviour monitoring", "Antivirus configuration", 3 },
+					{ "PUA protection", "Antivirus configuration", 4 },
+					{ "Antivirus mode (active)", "Antivirus configuration", 5 },
+					{ "Network protection", "Attack surface reduction", 6 },
+					{ "Tamper protection", "Attack surface reduction", 7 },
+					{ "AV platform version", "Version currency", 8 },
+					{ "AV engine version", "Version currency", 9 },
+					{ "AV signature currency", "Version currency", 10 },
+					{ "EDR sensor version", "Version currency", 11 },
+					{ "OS update currency", "Version currency", 12 }
+					}
+				)

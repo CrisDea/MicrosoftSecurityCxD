@@ -49,23 +49,23 @@ table LegacyAvMigration
 		dataType: string
 		sourceColumn: MigrationStatus
 
-	measure 'Legacy Source Devices' = COUNTROWS(LegacyAvMigration)
+	measure 'Legacy Source Devices' = COUNTROWS(LegacyAvMigration) + 0
 		formatString: 0
 
-	measure 'Legacy Migrated' = CALCULATE(COUNTROWS(LegacyAvMigration), LegacyAvMigration[MigrationStatus] = "Migrated to Defender")
+	measure 'Legacy Migrated' = CALCULATE(COUNTROWS(LegacyAvMigration), LegacyAvMigration[MigrationStatus] = "Migrated to Defender") + 0
 		formatString: 0
 
 	measure 'Legacy Onboarding Pending' = CALCULATE(COUNTROWS(LegacyAvMigration), LegacyAvMigration[MigrationStatus] = "Matched - not onboarded")
 		formatString: 0
 
-	measure 'Legacy Not In Defender' = CALCULATE(COUNTROWS(LegacyAvMigration), LegacyAvMigration[MigrationStatus] = "Not found in Defender")
+	measure 'Legacy Not In Defender' = CALCULATE(COUNTROWS(LegacyAvMigration), LegacyAvMigration[MigrationStatus] = "Not found in Defender") + 0
 		formatString: 0
 
-	measure 'Legacy Migration %' = DIVIDE([Legacy Migrated], [Legacy Source Devices])
+	measure 'Legacy Migration %' = DIVIDE([Legacy Migrated], [Legacy Source Devices], 0)
 		formatString: 0.0%
 
 	/// Number of distinct third-party AV/EDR products still represented in the source list.
-	measure 'Legacy Products In Scope' = DISTINCTCOUNT(LegacyAvMigration[LegacyProduct])
+	measure 'Legacy Products In Scope' = DISTINCTCOUNT(LegacyAvMigration[LegacyProduct]) + 0
 		formatString: 0
 
 	/// Products that still have at least one device not yet migrated to Defender.

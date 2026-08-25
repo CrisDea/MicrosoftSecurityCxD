@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "15360bc7009b54dd354d",
   "position": {
-    "x": 20,
-    "y": 52,
+    "x": 216,
+    "y": 58,
     "z": 5900,
-    "height": 40,
-    "width": 1240,
+    "height": 34,
+    "width": 1200,
     "tabOrder": 5900
   },
   "visual": {
@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "Version health is graded per exact OS build: green = on the newest production version, amber = behind, red = out of date (Windows AV platform by release month; sensor / Linux mdatp by release rank)",
+                    "value": "AV signature, engine, platform and EDR sensor versions graded per exact OS build: green = current, amber = behind, red = out of date. Percentages cover devices that report the component; N/A means the device does not report it.",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
@@ -36,3 +36,4 @@
     }
   }
 }
+

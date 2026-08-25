@@ -27,18 +27,22 @@
   "textClasses": {
     "callout": {
       "fontFace": "Segoe UI Semibold",
+      "fontSize": 32,
       "color": "#0F3D5E"
     },
     "title": {
       "fontFace": "Segoe UI Semibold",
+      "fontSize": 13,
       "color": "#1B3A57"
     },
     "header": {
       "fontFace": "Segoe UI Semibold",
+      "fontSize": 12,
       "color": "#1B3A57"
     },
     "label": {
       "fontFace": "Segoe UI",
+      "fontSize": 10,
       "color": "#323130"
     }
   },
@@ -83,10 +87,10 @@
             },
             "position": "Outer",
             "preset": "Custom",
-            "shadowBlur": 14,
-            "shadowDistance": 3,
-            "shadowSpread": 1,
-            "transparency": 80
+            "shadowBlur": 18,
+            "shadowDistance": 2,
+            "shadowSpread": 0,
+            "transparency": 86
           }
         ],
         "title": [
@@ -97,9 +101,52 @@
                 "color": "#1B3A57"
               }
             },
-            "fontSize": 12,
+            "fontSize": 13,
             "bold": true,
             "alignment": "left"
+          }
+        ],
+        "categoryAxis": [
+          {
+            "showAxisTitle": false,
+            "fontSize": 10,
+            "labelColor": {
+              "solid": {
+                "color": "#5B6B7F"
+              }
+            }
+          }
+        ],
+        "valueAxis": [
+          {
+            "showAxisTitle": false,
+            "fontSize": 10,
+            "labelColor": {
+              "solid": {
+                "color": "#5B6B7F"
+              }
+            },
+            "gridlineColor": {
+              "solid": {
+                "color": "#EDF2F8"
+              }
+            }
+          }
+        ],
+        "labels": [
+          {
+            "fontSize": 10
+          }
+        ],
+        "legend": [
+          {
+            "fontSize": 10,
+            "showTitle": false,
+            "labelColor": {
+              "solid": {
+                "color": "#5B6B7F"
+              }
+            }
           }
         ]
       }
@@ -112,6 +159,26 @@
             "color": {
               "solid": {
                 "color": "#FFFFFF"
+              }
+            }
+          }
+        ],
+        "labels": [
+          {
+            "fontSize": 30,
+            "color": {
+              "solid": {
+                "color": "#0F3D5E"
+              }
+            }
+          }
+        ],
+        "categoryLabels": [
+          {
+            "fontSize": 10,
+            "color": {
+              "solid": {
+                "color": "#5B6B7F"
               }
             }
           }
@@ -137,20 +204,144 @@
         ]
       }
     },
+    "tableEx": {
+      "*": {
+        "grid": [
+          {
+            "gridVertical": false,
+            "gridHorizontal": true,
+            "gridHorizontalColor": {
+              "solid": {
+                "color": "#EDF2F8"
+              }
+            },
+            "gridHorizontalWeight": 1,
+            "rowPadding": 4,
+            "outlineColor": {
+              "solid": {
+                "color": "#DCE6F2"
+              }
+            },
+            "outlineWeight": 1,
+            "textSize": 10
+          }
+        ],
+        "columnHeaders": [
+          {
+            "fontColor": {
+              "solid": {
+                "color": "#1B3A57"
+              }
+            },
+            "backColor": {
+              "solid": {
+                "color": "#F4F8FD"
+              }
+            },
+            "bold": true,
+            "fontSize": 10,
+            "wordWrap": true
+          }
+        ],
+        "values": [
+          {
+            "fontColorPrimary": {
+              "solid": {
+                "color": "#1B2A41"
+              }
+            },
+            "backColorPrimary": {
+              "solid": {
+                "color": "#FFFFFF"
+              }
+            },
+            "fontColorSecondary": {
+              "solid": {
+                "color": "#1B2A41"
+              }
+            },
+            "backColorSecondary": {
+              "solid": {
+                "color": "#FAFCFE"
+              }
+            },
+            "fontSize": 10
+          }
+        ]
+      }
+    },
+    "pivotTable": {
+      "*": {
+        "grid": [
+          {
+            "gridVertical": false,
+            "gridHorizontal": true,
+            "gridHorizontalColor": {
+              "solid": {
+                "color": "#EDF2F8"
+              }
+            },
+            "rowPadding": 4,
+            "textSize": 10
+          }
+        ],
+        "columnHeaders": [
+          {
+            "fontColor": {
+              "solid": {
+                "color": "#1B3A57"
+              }
+            },
+            "backColor": {
+              "solid": {
+                "color": "#F4F8FD"
+              }
+            },
+            "bold": true,
+            "fontSize": 10
+          }
+        ]
+      }
+    },
+    "slicer": {
+      "*": {
+        "header": [
+          {
+            "fontColor": {
+              "solid": {
+                "color": "#1B3A57"
+              }
+            },
+            "fontSize": 11,
+            "bold": true
+          }
+        ],
+        "items": [
+          {
+            "fontColor": {
+              "solid": {
+                "color": "#323130"
+              }
+            },
+            "fontSize": 10
+          }
+        ]
+      }
+    },
     "pieChart": {
       "*": {
         "labels": [
           {
             "show": true,
             "labelStyle": "Percent of total",
-            "fontSize": 9
+            "fontSize": 10
           }
         ],
         "legend": [
           {
             "show": true,
             "position": "Bottom",
-            "fontSize": 9
+            "fontSize": 10
           }
         ]
       }
@@ -161,14 +352,14 @@
           {
             "show": true,
             "labelStyle": "Percent of total",
-            "fontSize": 9
+            "fontSize": 10
           }
         ],
         "legend": [
           {
             "show": true,
             "position": "Bottom",
-            "fontSize": 9
+            "fontSize": 10
           }
         ]
       }

@@ -365,7 +365,7 @@ function Test-ProjectIntegrity {
         if ($pageCount -lt 1) { $issues.Add("Report has no pages under definition\pages.") }
     }
 
-    foreach ($a in @("DeploymentTrend.kql", "DeviceAvPosture.kql")) {
+    foreach ($a in @("DeviceAvPosture.kql")) {
         $ap = Join-Path $PSScriptRoot "assets\$a"
         if (-not (Test-Path -LiteralPath $ap)) { $issues.Add("Missing deploy asset: assets\$a") }
         elseif ((Get-Item -LiteralPath $ap).Length -eq 0) { $issues.Add("Empty deploy asset: assets\$a") }
@@ -961,22 +961,53 @@ function Backup-LocalStore {
 }
 
 function Get-TrendHistoryKey {
-    <# Stable de-dup key for a DeploymentTrend row: the day (first 10 chars of Date) and group. #>
+    <# Stable de-dup key for a DeploymentTrend row: the day (first 10 chars of Date) and group.
+       Property access is defensive because Set-StrictMode is active: a malformed row that lacks
+       Date would otherwise throw and abort the whole merge, silently discarding real history. #>
     param($Row)
-    $d = [string]$Row.Date
+    if ($null -eq $Row) { return $null }
+    $d = ''
+    if ($Row.PSObject.Properties['Date']) {
+        $raw = $Row.Date
+        # ConvertFrom-Json re-hydrates an ISO date string into [datetime], so a round-tripped row
+        # would otherwise stringify as "08/25/2026 00:00:00" and key differently from a freshly
+        # generated "2026-08-25T00:00:00Z" - the same day counted twice, doubling the trend.
+        if ($raw -is [datetime]) { $d = $raw.ToString('yyyy-MM-dd') }
+        else {
+            $d = [string]$raw
+            $parsed = [datetime]::MinValue
+            if ([datetime]::TryParse($d, [ref]$parsed)) { $d = $parsed.ToString('yyyy-MM-dd') }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($d)) { return $null }
     if ($d.Length -ge 10) { $d = $d.Substring(0, 10) }
-    return "$d|$([string]$Row.MachineGroup)"
+    $g = ''
+    if ($Row.PSObject.Properties['MachineGroup']) { $g = [string]$Row.MachineGroup }
+    return "$d|$g"
 }
 
 function Read-TrendHistoryStore {
     <# Reads the git-ignored local DeploymentTrend history store (JSON array of day/group rows).
-       Returns an empty array when the store is absent or unreadable. #>
+       Returns an empty array when the store is absent or unreadable.
+
+       Older stores could be written as a collection *envelope* rather than a bare array - under
+       Windows PowerShell 5.1, ConvertTo-Json on an ordered-dictionary value collection emits
+       {"value":[...],"Count":N} instead of enumerating it. Such a store deserialises to a single
+       object with no Date property, which used to abort the merge and lose the whole history.
+       Any recognised envelope is unwrapped here, and only rows that carry a Date survive. #>
     param([string]$Path)
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return @() }
     try {
         $raw = Get-Content -LiteralPath $Path -Raw
         if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
-        return @($raw | ConvertFrom-Json)
+        $parsed = $raw | ConvertFrom-Json
+        $rows = @($parsed)
+        if ($rows.Count -eq 1 -and $null -ne $rows[0] -and -not $rows[0].PSObject.Properties['Date']) {
+            foreach ($wrapper in @('value', 'Value', 'Results', 'rows')) {
+                if ($rows[0].PSObject.Properties[$wrapper]) { $rows = @($rows[0].$wrapper); break }
+            }
+        }
+        return @($rows | Where-Object { $null -ne $_ -and $_.PSObject.Properties['Date'] })
     } catch {
         Write-Warn2 "Could not read the trend-history store '$Path' ($($_.Exception.Message)); starting a fresh history."
         return @()
@@ -984,12 +1015,20 @@ function Read-TrendHistoryStore {
 }
 
 function Write-TrendHistoryStore {
-    <# Persists the accumulated DeploymentTrend history to a JSON array. #>
+    <# Persists the accumulated DeploymentTrend history to a JSON array.
+       The rows are copied into a plain array first: piping a collection wrapper straight to
+       ConvertTo-Json under Windows PowerShell 5.1 can serialise the wrapper's own properties
+       ({"value":[...],"Count":N}) instead of the rows, which corrupts the store. #>
     param([string]$Path, [object[]]$Rows)
     if (-not $Path) { return }
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
-    $json = if ($Rows -and $Rows.Count -gt 0) { $Rows | ConvertTo-Json -Depth 5 } else { "[]" }
+    $plain = @(); foreach ($r in $Rows) { if ($null -ne $r) { $plain += $r } }
+    $json = "[]"
+    if ($plain.Count -gt 0) {
+        $json = ($plain | ConvertTo-Json -Depth 5)
+        if ($plain.Count -eq 1) { $json = "[$json]" }   # single record -> keep it an array
+    }
     Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
 }
 
@@ -1003,10 +1042,15 @@ function Merge-TrendHistory {
        by date then group. #>
     param([object[]]$Existing, [object[]]$New, [int]$RetentionDays = 400)
     $map = [ordered]@{}
-    foreach ($e in $Existing) { if ($null -ne $e) { $map[(Get-TrendHistoryKey $e)] = $e } }
+    foreach ($e in $Existing) {
+        if ($null -eq $e) { continue }
+        $k = Get-TrendHistoryKey $e
+        if ($null -ne $k) { $map[$k] = $e }
+    }
     foreach ($n in $New) {
         if ($null -eq $n) { continue }
         $k = Get-TrendHistoryKey $n
+        if ($null -eq $k) { continue }
         if ($map.Contains($k)) {
             $old = $map[$k]
             $oldNc = 0; if ($old.PSObject.Properties['NonCompliant']) { [void][int]::TryParse([string]$old.NonCompliant, [ref]$oldNc) }
@@ -1015,7 +1059,14 @@ function Merge-TrendHistory {
         }
         $map[$k] = $n
     }
-    $rows = @($map.Values)
+    $rows = @(); foreach ($v in $map.Values) { $rows += $v }
+    # Canonicalise Date so the store, the embedded seed and the next merge all agree on one format.
+    foreach ($r in $rows) {
+        if ($r.PSObject.Properties['Date']) {
+            $k = Get-TrendHistoryKey $r
+            if ($null -ne $k) { $r.Date = $k.Split('|')[0] + 'T00:00:00Z' }
+        }
+    }
     if ($RetentionDays -gt 0 -and $rows.Count -gt 0) {
         $dates = New-Object System.Collections.ArrayList
         foreach ($r in $rows) { try { [void]$dates.Add([datetime]::Parse((Get-TrendHistoryKey $r).Split('|')[0])) } catch {} }
@@ -1025,6 +1076,58 @@ function Merge-TrendHistory {
         }
     }
     return @($rows | Sort-Object @{ Expression = { (Get-TrendHistoryKey $_).Split('|')[0] } }, @{ Expression = { [string]$_.MachineGroup } })
+}
+
+function Get-DefenderTrendSnapshot {
+    <# Returns today's DeploymentTrend rows (one per machine group) from GET /api/machines - the
+       SAME endpoint that feeds the DeviceHealth table and therefore every KPI card.
+
+       This deliberately does not use advanced hunting. DeviceInfo answers a different question:
+       it reports devices that have produced telemetry, and its OnboardingStatus reflects
+       discovery state, so a tenant can legitimately show "Can be onboarded" there for machines
+       the machines API reports as Onboarded. Sourcing the trend from hunting while the cards
+       beside it came from /api/machines put two different populations on one page - the trend
+       read 0 onboarded / 10 remaining while the cards on the same page read 7 / 13. #>
+    param([string]$TenantId, [string]$ClientId, [string]$ClientSecret)
+    $tok = Get-SecurityCenterToken -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret
+    $headers = @{ Authorization = "Bearer $tok" }
+    $url = 'https://api.securitycenter.microsoft.com/api/machines?$select=id,computerDnsName,onboardingStatus,healthStatus,rbacGroupName,mergedIntoMachineId,isExcluded'
+    $machines = New-Object System.Collections.ArrayList
+    while ($url) {
+        $resp = Invoke-RestMethod -Method GET -Uri $url -Headers $headers
+        foreach ($m in $resp.value) {
+            if ([string]::IsNullOrWhiteSpace($m.computerDnsName)) { continue }
+            # Mirror the DeviceHealth table exactly: drop merged-away and excluded machines.
+            if (-not [string]::IsNullOrWhiteSpace([string]$m.mergedIntoMachineId)) { continue }
+            if ([string]$m.isExcluded -eq 'True') { continue }
+            [void]$machines.Add($m)
+        }
+        $url = try { $resp.'@odata.nextLink' } catch { $null }
+    }
+    if ($machines.Count -eq 0) { return @() }
+
+    $day = (Get-Date).ToUniversalTime().Date.ToString('yyyy-MM-ddT00:00:00Z')
+    $groups = [ordered]@{}
+    foreach ($m in $machines) {
+        $g = [string]$m.rbacGroupName
+        if ([string]::IsNullOrWhiteSpace($g)) { $g = 'Unassigned' }
+        if (-not $groups.Contains($g)) {
+            $groups[$g] = [pscustomobject]@{
+                Date = $day; MachineGroup = $g; MdeOnboarded = 0; TrendRemaining = 0
+                ActiveDevices = 0; StaleDevices = 0; NonCompliant = 0
+            }
+        }
+        $r = $groups[$g]
+        if ([string]$m.onboardingStatus -eq 'Onboarded') {
+            $r.MdeOnboarded++
+            if ([string]$m.healthStatus -eq 'Active') { $r.ActiveDevices++ }
+            else { $r.StaleDevices++; $r.NonCompliant++ }
+        } else {
+            $r.TrendRemaining++
+        }
+    }
+    $out = @(); foreach ($v in $groups.Values) { $out += $v }
+    return $out
 }
 
 function New-TrendSeedOverride {
@@ -1049,20 +1152,11 @@ function New-TrendSeedOverride {
     if (-not ($TenantId -and $ClientId -and $ClientSecret)) {
         throw "This dashboard queries Microsoft Defender live and needs an Entra app registration. Provide graphTenantId/graphClientId/graphClientSecret (or tenantId/clientId/clientSecret) in config.json, or pass -TenantId -ClientId -ClientSecret."
     }
-    $kqlPath = Join-Path $PSScriptRoot "assets\DeploymentTrend.kql"
-    if (-not (Test-Path -LiteralPath $kqlPath)) { throw "Trend-history query asset not found: $kqlPath" }
-    $kql = [IO.File]::ReadAllText($kqlPath)
     $histStore = Join-Path $PSScriptRoot "deployment-trend.local.json"
     $history = @(Read-TrendHistoryStore -Path $histStore)
     $seedJson = "[]"
     try {
-        $body = @{ client_id = $ClientId; client_secret = $ClientSecret; grant_type = "client_credentials"
-                   scope = "https://api.securitycenter.microsoft.com/.default" }
-        $tok = (Invoke-RestMethod -Method POST -ContentType "application/x-www-form-urlencoded" `
-                    -Uri "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token" -Body $body).access_token
-        $resp = Invoke-RestMethod -Method POST -Uri "https://api.securitycenter.microsoft.com/api/advancedqueries/run" `
-                    -Headers @{ Authorization = "Bearer $tok" } -ContentType "application/json" -Body (@{ Query = $kql } | ConvertTo-Json)
-        $rows = @($resp.Results)
+        $rows = @(Get-DefenderTrendSnapshot -TenantId $TenantId -ClientId $ClientId -ClientSecret $ClientSecret)
         if ($rows.Count -gt 0) {
             $merged = @(Merge-TrendHistory -Existing $history -New $rows)
             Backup-LocalStore -Path $histStore | Out-Null
@@ -1070,14 +1164,14 @@ function New-TrendSeedOverride {
             $seedJson = ($merged | ConvertTo-Json -Depth 5 -Compress)
             if ($merged.Count -eq 1) { $seedJson = "[$seedJson]" }   # single record -> keep it an array
             $extra = $merged.Count - $rows.Count
-            if ($extra -gt 0) { Write-Ok "Trend history: $($rows.Count) fresh day/group rows + $extra retained from prior deploys = $($merged.Count) total" }
-            else              { Write-Ok "Trend history generated: $($rows.Count) day/group rows" }
+            if ($extra -gt 0) { Write-Ok "Trend history: $($rows.Count) group rows for today + $extra retained from prior deploys = $($merged.Count) total" }
+            else              { Write-Ok "Trend history generated: $($rows.Count) group rows for today" }
         } elseif ($history.Count -gt 0) {
             $seedJson = ($history | ConvertTo-Json -Depth 5 -Compress)
             if ($history.Count -eq 1) { $seedJson = "[$seedJson]" }
-            Write-Warn2 "Advanced-hunting trend query returned no rows - re-pushing $($history.Count) day/group rows retained from prior deploys so the trend is preserved."
+            Write-Warn2 "Defender returned no machines - re-pushing $($history.Count) day/group rows retained from prior deploys so the trend is preserved."
         } else {
-            Write-Warn2 "Advanced-hunting trend query returned no rows - trend will be empty until more history accrues."
+            Write-Warn2 "Defender returned no machines - trend will be empty until devices are onboarded."
         }
     } catch {
         if ($history.Count -gt 0) {
@@ -1085,7 +1179,7 @@ function New-TrendSeedOverride {
             if ($history.Count -eq 1) { $seedJson = "[$seedJson]" }
             Write-Warn2 "Could not generate fresh trend history ($($_.Exception.Message)). Re-pushing $($history.Count) day/group rows retained from prior deploys so nothing is lost."
         } else {
-            Write-Warn2 "Could not generate trend history ($($_.Exception.Message)). Deploying with an empty trend; re-run once the app has WindowsDefenderATP AdvancedQuery.Read.All / Machine.Read.All consented."
+            Write-Warn2 "Could not generate trend history ($($_.Exception.Message)). Deploying with an empty trend; re-run once the app has WindowsDefenderATP Machine.Read.All consented."
         }
     }
     $seedB64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($seedJson))

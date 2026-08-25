@@ -95,7 +95,7 @@ table DeviceHealth
 	column LastSeen
 		dataType: dateTime
 		sourceColumn: LastSeen
-		formatString: General Date
+		formatString: yyyy-mm-dd
 
 	column OSPlatform
 		dataType: string
@@ -124,7 +124,7 @@ table DeviceHealth
 	column EOS
 		dataType: dateTime
 		sourceColumn: EOS
-		formatString: General Date
+		formatString: yyyy-mm-dd
 
 	column OSProduct
 		dataType: string
@@ -149,7 +149,7 @@ table DeviceHealth
 	column OSEolDate
 		dataType: dateTime
 		sourceColumn: OSEolDate
-		formatString: General Date
+		formatString: yyyy-mm-dd
 
 	column OSPatchCurrency
 		dataType: string
@@ -234,7 +234,7 @@ table DeviceHealth
 	column AVSigLastUpdateTime
 		dataType: dateTime
 		sourceColumn: AVSigLastUpdateTime
-		formatString: General Date
+		formatString: yyyy-mm-dd
 
 	column AVMode
 		dataType: string
@@ -349,19 +349,24 @@ table DeviceHealth
 	measure 'Servers' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceType]="Server")
 		formatString: 0
 
-	measure 'Active Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceStatus]="Active", DeviceHealth[OnboardingStatus]="Onboarded")
+	measure 'Active Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceStatus]="Active", DeviceHealth[OnboardingStatus]="Onboarded") + 0
 		formatString: 0
 
-	measure 'Stale Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceStatus]="Stale", DeviceHealth[OnboardingStatus]="Onboarded")
+	measure 'Stale Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceStatus]="Stale", DeviceHealth[OnboardingStatus]="Onboarded") + 0
 		formatString: 0
 
-	measure 'MDE Onboarded' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]="MDE onboarded")
+	measure 'MDE Onboarded' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]="MDE onboarded") + 0
 		formatString: 0
 
-	measure 'Legacy Remaining' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]<>"MDE onboarded") + [Legacy Not In Defender]
+	measure 'Legacy Remaining' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[MigrationStatus]<>"MDE onboarded") + [Legacy Not In Defender] + 0
 		formatString: 0
 
-	measure 'Migration %' = IF([Legacy Source Devices] = 0, "N/A", DIVIDE([Healthy Onboarded Devices], [Legacy Source Devices]))
+	/// Rollout progress. When a legacy AV/EDR inventory CSV has been imported the denominator is
+	/// that source estate, which is the truest measure of "how far through the migration are we".
+	/// Without a CSV the dashboard still knows the whole Defender-visible estate, so it falls back
+	/// to onboarded / total devices rather than reporting N/A next to populated Total and Onboarded
+	/// cards, which read as a broken tile.
+	measure 'Migration %' = VAR _legacy = [Legacy Source Devices] RETURN IF(_legacy > 0, DIVIDE([Healthy Onboarded Devices], _legacy), DIVIDE([MDE Onboarded], [Total Devices]))
 		formatString: 0.0%
 
 	measure 'Healthy Onboarded Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OnboardingStatus]="Onboarded", DeviceHealth[Healthy]="Healthy")
@@ -385,7 +390,11 @@ table DeviceHealth
 	measure 'Sensor Compliant %' = VAR _den = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[SensorCompliant]<>"N/A") RETURN IF(_den=0, "N/A", DIVIDE(CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[SensorCompliant]="GOOD"), _den))
 		formatString: 0.0%
 
-	measure 'Non-Compliant Devices' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[AVSigCompliant]="BAD" || DeviceHealth[AVEngineCompliant]="BAD" || DeviceHealth[AVPlatformCompliant]="BAD" || DeviceHealth[SensorCompliant]="BAD"))
+	/// Devices needing action, matching the Non-Compliant page definition: behind on any version
+	/// component, or with an impaired / non-reporting sensor. Sensor connectivity is part of the
+	/// test because a device that has stopped reporting cannot be shown to be compliant at all -
+	/// omitting it made the headline card read 0 while the table beneath it listed devices.
+	measure 'Non-Compliant Devices' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[AVSigCompliant]="BAD" || DeviceHealth[AVEngineCompliant]="BAD" || DeviceHealth[AVPlatformCompliant]="BAD" || DeviceHealth[SensorCompliant]="BAD" || DeviceHealth[SensorConnectivity]="WARN" || DeviceHealth[SensorConnectivity]="BAD"))
 		formatString: 0
 
 	measure 'Fully Migrated & Configured' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[OnboardingStatus]="Onboarded" && DeviceHealth[LegacyAvInstalled]="No" && DeviceHealth[Healthy]="Healthy"))
@@ -394,13 +403,13 @@ table DeviceHealth
 	measure 'Fully Migrated & Configured %' = DIVIDE([Fully Migrated & Configured], [Total Devices], 0)
 		formatString: 0.0%
 
-	measure 'Needs Attention' = [Onboarded Devices] - [Fully Migrated & Configured]
+	measure 'Needs Attention' = [Onboarded Devices] - [Fully Migrated & Configured] + 0
 		formatString: 0
 
 	measure 'Migration Backlog' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OnboardingStatus]="Can be onboarded")
 		formatString: 0
 
-	measure 'Healthy Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[Healthy]="Healthy")
+	measure 'Healthy Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[Healthy]="Healthy") + 0
 		formatString: 0
 
 	measure 'Healthy %' = DIVIDE([Healthy Devices], [Onboarded Devices], 0)
@@ -457,13 +466,13 @@ table DeviceHealth
 	measure 'Sensor Needs Attention' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[SensorConnectivity]="WARN" || DeviceHealth[SensorConnectivity]="BAD"))
 		formatString: 0
 
-	measure 'OS Supported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Supported")
+	measure 'OS Supported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Supported") + 0
 		formatString: 0
 
-	measure 'OS EOL Imminent' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="EOL-imminent")
+	measure 'OS EOL Imminent' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="EOL-imminent") + 0
 		formatString: 0
 
-	measure 'OS Unsupported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Unsupported (EOL)")
+	measure 'OS Unsupported' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSSupportState]="Unsupported (EOL)") + 0
 		formatString: 0
 
 	measure 'OS On Latest Patch' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPatchCurrency]="Latest")
@@ -481,7 +490,7 @@ table DeviceHealth
 	measure 'Onboarded Windows Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OnboardingStatus]="Onboarded", DeviceHealth[OSFamily]="Windows")
 		formatString: 0
 
-	measure 'EDR Legacy Platform' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[EDRPlatform]="Legacy (pre-10.80xx)")
+	measure 'EDR Legacy Platform' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[EDRPlatform]="Legacy (pre-10.80xx)") + 0
 		formatString: 0
 
 	measure 'EDR Current Platform' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[EDRPlatform]="Current (10.8+)")
@@ -489,7 +498,7 @@ table DeviceHealth
 
 	measure 'OS Monthly Coverage' = FORMAT([OS Monthly Data Devices], "0") & " / " & FORMAT([Onboarded Windows Devices], "0")
 
-	measure 'Mobile Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceType]="Mobile")
+	measure 'Mobile Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[DeviceType]="Mobile") + 0
 		formatString: 0
 
 	measure 'Android Devices' = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[OSPlatform]="Android")
@@ -525,10 +534,10 @@ table DeviceHealth
 	measure 'Mobile Stale' = CALCULATE(COUNTROWS(DeviceHealth), FILTER(DeviceHealth, DeviceHealth[DeviceType]="Mobile" && DeviceHealth[DeviceStatus]="Stale"))
 		formatString: 0
 
-	measure 'Fully Migrated' = [Fully Migrated & Configured]
+	measure 'Fully Migrated' = [Fully Migrated & Configured] + 0
 		formatString: 0
 
-	measure 'Fully Migrated %' = [Fully Migrated & Configured %]
+	measure 'Fully Migrated %' = [Fully Migrated & Configured %] + 0
 		formatString: 0.0%
 
 	measure 'AV Sig %' = [AV Sig Compliant %]
@@ -543,34 +552,34 @@ table DeviceHealth
 	measure 'Sensor %' = [Sensor Compliant %]
 		formatString: 0.0%
 
-	measure 'Non-Compliant' = [Non-Compliant Devices]
+	measure 'Non-Compliant' = [Non-Compliant Devices] + 0
 		formatString: 0
 
-	measure 'Sensor Attention' = [Sensor Needs Attention]
+	measure 'Sensor Attention' = [Sensor Needs Attention] + 0
 		formatString: 0
 
-	measure 'Not Reporting' = [Sensor Not Reporting]
+	measure 'Not Reporting' = [Sensor Not Reporting] + 0
 		formatString: 0
 
-	measure 'Platform Outdated' = VAR _g = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[AVPlatformCompliant]<>"N/A") RETURN IF(_g=0, "N/A", [Platform Out Of Date])
+	measure 'Platform Outdated' = VAR _g = CALCULATE(COUNTROWS(DeviceHealth), DeviceHealth[AVPlatformCompliant]<>"N/A") RETURN IF(_g=0, "N/A", [Platform Out Of Date] + 0)
 		formatString: 0
 
-	measure 'Sensor Outdated' = [Sensor Out Of Date]
+	measure 'Sensor Outdated' = [Sensor Out Of Date] + 0
 		formatString: 0
 
-	measure 'Android' = [Android Devices]
+	measure 'Android' = [Android Devices] + 0
 		formatString: 0
 
-	measure 'iOS' = [iOS Devices]
+	measure 'iOS' = [iOS Devices] + 0
 		formatString: 0
 
-	measure 'MDM Enrolled' = [Mobile MDM Enrolled]
+	measure 'MDM Enrolled' = [Mobile MDM Enrolled] + 0
 		formatString: 0
 
-	measure 'MAM Enrolled' = [Mobile MAM Enrolled]
+	measure 'MAM Enrolled' = [Mobile MAM Enrolled] + 0
 		formatString: 0
 
-	measure 'App Outdated' = [Mobile App Out Of Date]
+	measure 'App Outdated' = [Mobile App Out Of Date] + 0
 		formatString: 0
 
 	partition DeviceHealth = m
