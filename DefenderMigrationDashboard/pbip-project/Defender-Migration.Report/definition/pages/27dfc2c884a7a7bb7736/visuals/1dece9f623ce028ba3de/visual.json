@@ -3,10 +3,10 @@
   "name": "1dece9f623ce028ba3de",
   "position": {
     "x": 216.0,
-    "y": 412.0,
+    "y": 406.0,
     "z": 3900,
-    "height": 152.0,
-    "width": 585.0,
+    "height": 124.0,
+    "width": 462.0,
     "tabOrder": 3900
   },
   "visual": {
@@ -291,6 +291,13 @@
               "expr": {
                 "Literal": {
                   "Value": "false"
+                }
+              }
+            },
+            "maxMarginFactor": {
+              "expr": {
+                "Literal": {
+                  "Value": "40D"
                 }
               }
             }

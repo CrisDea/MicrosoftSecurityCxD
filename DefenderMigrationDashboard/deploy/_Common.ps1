@@ -1258,15 +1258,28 @@ function Get-LatestMicrosoftVersions {
     $bd = { param($r) if ($r) { return [string]$r.Build } else { return $null } }
     $dt = { param($r) if ($r) { return [string]$r.Details } else { return $null } }
 
+    # macOS and Linux do NOT use the Windows version namespaces. Each release row carries,
+    # in its Details cell, the three values those agents actually report:
+    #   "Release version: 20.126062.12.0"   <- what the device reports as its EDR version
+    #                                          (macOS 20.x, Linux 30.x - NOT the 101.x build)
+    #   "Engine version:  1.1.26060.12000"  <- platform-specific engine build, distinct from
+    #                                          the Windows engine (1.1.26070.7)
+    #   "Signature version: ..."            <- the definitions shipped in that release
+    # Reporting the 101.x build against a device's 20.x/30.x EDR version compares two
+    # different things, so both are surfaced separately and labelled for the field they match.
     return @(
-        [pscustomobject]@{ SortOrder = 1; Platform = "Windows"; Component = "AV security intelligence"; LatestVersion = $sig;                                        Released = "Updated daily";  Source = "WDSI"  }
-        [pscustomobject]@{ SortOrder = 2; Platform = "Windows"; Component = "AV engine";                LatestVersion = (& $afterLabel (& $dt $winAv) "Engine:");     Released = (& $mo $winAv);   Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 3; Platform = "Windows"; Component = "AV platform";             LatestVersion = (& $afterLabel (& $dt $winAv) "Platform:");   Released = (& $mo $winAv);   Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 4; Platform = "Windows"; Component = "EDR sensor";              LatestVersion = (& $bd $winEdr);                              Released = (& $mo $winEdr);  Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 5; Platform = "macOS";   Component = "MDE build";               LatestVersion = (& $bd $mac);                                 Released = (& $mo $mac);     Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 6; Platform = "Linux";   Component = "MDE build";               LatestVersion = (& $bd $lin);                                 Released = (& $mo $lin);     Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 7; Platform = "Android"; Component = "MDE build";               LatestVersion = (& $bd $droid);                               Released = (& $mo $droid);   Source = "Learn" }
-        [pscustomobject]@{ SortOrder = 8; Platform = "iOS";     Component = "MDE build";               LatestVersion = (& $bd $ios);                                 Released = (& $mo $ios);     Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  1; Platform = "All platforms"; Component = "AV security intelligence"; LatestVersion = $sig;                                              Released = "Updated daily"; Source = "WDSI"  }
+        [pscustomobject]@{ SortOrder =  2; Platform = "Windows"; Component = "AV platform";      LatestVersion = (& $afterLabel (& $dt $winAv) "Platform:");         Released = (& $mo $winAv);  Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  3; Platform = "Windows"; Component = "AV engine";        LatestVersion = (& $afterLabel (& $dt $winAv) "Engine:");           Released = (& $mo $winAv);  Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  4; Platform = "Windows"; Component = "EDR sensor";       LatestVersion = (& $bd $winEdr);                                    Released = (& $mo $winEdr); Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  5; Platform = "macOS";   Component = "App build";        LatestVersion = (& $bd $mac);                                       Released = (& $mo $mac);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  6; Platform = "macOS";   Component = "EDR release";      LatestVersion = (& $afterLabel (& $dt $mac) "Release version:");     Released = (& $mo $mac);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  7; Platform = "macOS";   Component = "AV engine (in-box)";        LatestVersion = (& $afterLabel (& $dt $mac) "Engine version:");      Released = (& $mo $mac);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  8; Platform = "Linux";   Component = "App build";        LatestVersion = (& $bd $lin);                                       Released = (& $mo $lin);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder =  9; Platform = "Linux";   Component = "EDR release";      LatestVersion = (& $afterLabel (& $dt $lin) "Release version:");     Released = (& $mo $lin);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 10; Platform = "Linux";   Component = "AV engine (in-box)";        LatestVersion = (& $afterLabel (& $dt $lin) "Engine version:");      Released = (& $mo $lin);    Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 11; Platform = "Android"; Component = "App build";        LatestVersion = (& $bd $droid);                                     Released = (& $mo $droid);  Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 12; Platform = "iOS";     Component = "App build";        LatestVersion = (& $bd $ios);                                       Released = (& $mo $ios);    Source = "Learn" }
     )
 }
 function New-BaselineSeedOverride {
@@ -1289,15 +1302,20 @@ function New-BaselineSeedOverride {
     # Floor: last-known-good at authoring time. Only ever surfaces if BOTH the refresh-time
     # scrape and the deploy-time scrape fail, which would otherwise leave the table empty.
     $floor = @{
-        "Windows|AV security intelligence" = @("1.457.332.0",    "Updated daily")
-        "Windows|AV engine"                = @("1.1.26070.7",    "July 2026")
-        "Windows|AV platform"              = @("4.18.26070.9",   "July 2026")
-        "Windows|EDR sensor"               = @("10.8821",        "February 2026")
-        "macOS|MDE build"                  = @("101.26062.0012", "August 2026")
-        "Linux|MDE build"                  = @("101.26062.0007", "August 2026")
-        "Android|MDE build"                = @("1.0.9129.0101",  "Aug 2026")
-        "iOS|MDE build"                    = @("1.1.80120102",   "Aug 2026")
+        "All platforms|AV security intelligence" = @("1.457.332.0",      "Updated daily")
+        "Windows|AV platform"                    = @("4.18.26070.9",     "July 2026")
+        "Windows|AV engine"                      = @("1.1.26070.7",      "July 2026")
+        "Windows|EDR sensor"                     = @("10.8821",          "February 2026")
+        "macOS|App build"                        = @("101.26062.0012",   "August 2026")
+        "macOS|EDR release"                      = @("20.126062.12.0",   "August 2026")
+        "macOS|AV engine (in-box)"               = @("1.1.26060.12000",  "August 2026")
+        "Linux|App build"                        = @("101.26062.0007",   "August 2026")
+        "Linux|EDR release"                      = @("30.126052.0012.0", "August 2026")
+        "Linux|AV engine (in-box)"               = @("1.1.26040.3001",   "August 2026")
+        "Android|App build"                      = @("1.0.9212.0102",    "Aug 2026")
+        "iOS|App build"                          = @("1.1.80120102",     "Aug 2026")
     }
+
 
     $rows = @(Get-LatestMicrosoftVersions)
     $out  = New-Object System.Collections.ArrayList

@@ -154,26 +154,42 @@ table Baselines
 				    SigVer = try FirstVer(Text.AfterDelimiter(Text.AfterDelimiter(WdsiBlock, "Version:"), "<span>")) otherwise null,
 				
 				    // ---- assemble -----------------------------------------------------
+				    // macOS and Linux do NOT share the Windows version namespaces. Each release
+				    // row carries, in its Details cell, the values those agents actually report:
+				    //   "Release version: 20.126062.12.0" -> what the device reports as its EDR
+				    //        version (macOS 20.x, Linux 30.x) - NOT the 101.x app build.
+				    //   "Engine version:  1.1.26060.12000" -> platform-specific engine build,
+				    //        a different series from the Windows engine (1.1.26070.7).
+				    // Showing the 101.x build against a device's 20.x/30.x EDR version would
+				    // compare two unrelated things, so each is carried as its own row.
+				    // Security intelligence is shared across platforms, so it is listed once.
 				    Live = {
-				        [ SortOrder = 1, Platform = "Windows", Component = "AV security intelligence",
-				          LatestVersion = SigVer,                                          Released = "Updated daily",  Source = "WDSI"  ],
-				        [ SortOrder = 2, Platform = "Windows", Component = "AV engine",
-				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Engine:"),    Released = Fld(WinAv, "Month"),  Source = "Learn" ],
-				        [ SortOrder = 3, Platform = "Windows", Component = "AV platform",
-				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Platform:"),  Released = Fld(WinAv, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 1, Platform = "All platforms", Component = "AV security intelligence",
+				          LatestVersion = SigVer,                                                  Released = "Updated daily",      Source = "WDSI"  ],
+				        [ SortOrder = 2, Platform = "Windows", Component = "AV platform",
+				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Platform:"),           Released = Fld(WinAv, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 3, Platform = "Windows", Component = "AV engine",
+				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Engine:"),             Released = Fld(WinAv, "Month"),  Source = "Learn" ],
 				        [ SortOrder = 4, Platform = "Windows", Component = "EDR sensor",
-				          LatestVersion = Fld(WinEdr, "Build"),                            Released = Fld(WinEdr, "Month"), Source = "Learn" ],
-				        [ SortOrder = 5, Platform = "macOS",   Component = "MDE build",
-				          LatestVersion = Fld(Mac, "Build"),                               Released = Fld(Mac, "Month"),    Source = "Learn" ],
-				        [ SortOrder = 6, Platform = "Linux",   Component = "MDE build",
-				          LatestVersion = Fld(Lin, "Build"),                               Released = Fld(Lin, "Month"),    Source = "Learn" ],
-				        [ SortOrder = 7, Platform = "Android", Component = "MDE build",
-				          LatestVersion = Fld(Droid, "Build"),                             Released = Fld(Droid, "Month"),  Source = "Learn" ],
-				        [ SortOrder = 8, Platform = "iOS",     Component = "MDE build",
-				          LatestVersion = Fld(Ios, "Build"),                               Released = Fld(Ios, "Month"),    Source = "Learn" ]
+				          LatestVersion = Fld(WinEdr, "Build"),                                     Released = Fld(WinEdr, "Month"), Source = "Learn" ],
+				        [ SortOrder = 5, Platform = "macOS",   Component = "App build",
+				          LatestVersion = Fld(Mac, "Build"),                                        Released = Fld(Mac, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 6, Platform = "macOS",   Component = "EDR release",
+				          LatestVersion = AfterLabel(Fld(Mac, "Details"), "Release version:"),      Released = Fld(Mac, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 7, Platform = "macOS",   Component = "AV engine (in-box)",
+				          LatestVersion = AfterLabel(Fld(Mac, "Details"), "Engine version:"),       Released = Fld(Mac, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 8, Platform = "Linux",   Component = "App build",
+				          LatestVersion = Fld(Lin, "Build"),                                        Released = Fld(Lin, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 9, Platform = "Linux",   Component = "EDR release",
+				          LatestVersion = AfterLabel(Fld(Lin, "Details"), "Release version:"),      Released = Fld(Lin, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 10, Platform = "Linux",  Component = "AV engine (in-box)",
+				          LatestVersion = AfterLabel(Fld(Lin, "Details"), "Engine version:"),       Released = Fld(Lin, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 11, Platform = "Android", Component = "App build",
+				          LatestVersion = Fld(Droid, "Build"),                                      Released = Fld(Droid, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 12, Platform = "iOS",     Component = "App build",
+				          LatestVersion = Fld(Ios, "Build"),                                        Released = Fld(Ios, "Month"),    Source = "Learn" ]
 				    },
-				
-				    // ---- fall back per row to the deploy-time snapshot -----------------
+				// ---- fall back per row to the deploy-time snapshot -----------------
 				    Seed = try Json.Document(Binary.FromText("__BASELINE_SEED_B64__", BinaryEncoding.Base64)) otherwise {},
 				    SeedOf = (plat as text, comp as text, field as text) as nullable text =>
 				        let hit = List.Select(Seed, each (try (_[Platform] = plat and _[Component] = comp) otherwise false))
@@ -182,9 +198,9 @@ table Baselines
 				    // Display ordinals. Each is 1:1 with its text column, which is what the
 				    // sortByColumn relationship requires.
 				    PlatOrder = (p as text) as number =>
-				        let i = List.PositionOf({"Windows", "macOS", "Linux", "Android", "iOS"}, p) in if i < 0 then 99 else i + 1,
+				        let i = List.PositionOf({"All platforms", "Windows", "macOS", "Linux", "Android", "iOS"}, p) in if i < 0 then 99 else i + 1,
 				    CompOrder = (c as text) as number =>
-				        let i = List.PositionOf({"AV security intelligence", "AV engine", "AV platform", "EDR sensor", "MDE build"}, c) in if i < 0 then 99 else i + 1,
+				        let i = List.PositionOf({"AV security intelligence", "AV platform", "AV engine", "EDR sensor", "App build", "EDR release", "AV engine (in-box)"}, c) in if i < 0 then 99 else i + 1,
 
 				    Resolve = (r as record) as record =>
 				        let live = r[LatestVersion],

@@ -66,8 +66,33 @@ unreachable or is restructured, that row degrades to last-known-good rather than
 The `Source` and `RetrievedUtc` columns record which page each value came from and when, so a stale
 value is visible rather than silent.
 
-The release-notes table is not in date order and its month column is inconsistent free text, so rows
-are ranked by build version rather than by date.
+**Platform version namespaces are not interchangeable.** This is the part that most often gets
+reported wrongly. Defender on macOS and Linux does not use the Windows version series, and the
+number a device reports as its *EDR version* is not its app build:
+
+| Platform | Device reports as… | Namespace | Published reference |
+|---|---|---|---|
+| Windows | `AVProductVersion` | `4.18.x` | AV platform |
+| Windows | `AVEngineVersion` | `1.1.x` (short last segment) | AV engine |
+| Windows | `EDRVersion` | `10.8xxx` | EDR sensor |
+| macOS | `AVProductVersion` | `101.x` | App build |
+| macOS | `EDRVersion` | `20.x` | EDR release |
+| Linux | `AVProductVersion` | `101.x` | App build |
+| Linux | `EDRVersion` | `30.x` | EDR release |
+| Android / iOS | app version | `1.0.x` / `1.1.x` | App build |
+
+So a Linux device reporting `30.126052` is **not** comparable to the `101.26062.0007` app build,
+even though both describe the same release. The Baselines table therefore carries the app build and
+the EDR release as separate rows per platform, taken from the `Release version` field the release
+notes publish alongside each build.
+
+Two further caveats the table encodes:
+
+- **Security intelligence is shared across platforms**, so it is listed once as *All platforms*
+  rather than repeated per OS.
+- **The macOS/Linux engine is labelled *in-box***: it is the engine that shipped with that release,
+  but the running engine advances independently through the signature channel and is routinely
+  *newer* than the released value. A device ahead of this number is healthy, not stale.
 
 The "stale" threshold is a parameter (`StaleAfterDays`, default 7). Agree the value with the customer.
 

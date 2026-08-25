@@ -6,6 +6,24 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.20.18] - 2026-08-20
+
+### Fixed
+- **macOS and Linux version baselines were being compared in the wrong namespace.** Defender on
+  macOS/Linux does not use the Windows version series, and the value a device reports as its *EDR
+  version* is not its app build. The baseline table listed only the `101.x` app build for those
+  platforms, so a Linux device reporting `EDRVersion 30.126052` was shown against a published
+  `101.26062.0007` — two unrelated numbers. The release notes publish the matching `Release version`
+  (macOS `20.x`, Linux `30.x`) alongside each build; both are now carried as separate rows.
+- The macOS/Linux **AV engine** is now listed as *in-box* — the engine that shipped with that
+  release. The running engine advances independently via the signature channel and is routinely
+  newer, so a device ahead of the released value is healthy rather than out of date.
+- **Security intelligence is listed once as *All platforms*** instead of under Windows, since the
+  definitions are shared across operating systems.
+
+### Changed
+- The baseline table grew from 8 rows to 12 to cover the per-platform components; the Version
+  Compliance layout was reflowed to fit them without a scrollbar.
 ## [2026.08.20.17] - 2026-08-20
 
 ### Changed
