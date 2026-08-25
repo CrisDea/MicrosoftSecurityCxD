@@ -19,9 +19,15 @@ pwsh ./deploy/Deploy-Dashboard.ps1 -ConfigPath ./deploy/config.json -SelectWorks
 # 3. Open the report at the URL the script prints when it finishes
 ```
 
-That publishes the semantic model and report, binds the report to the model, binds the data source to
-your app as a Service Principal, generates the 30-day trend history, enables a scheduled refresh, and
-runs a first refresh so the report shows your real Defender data.
+That publishes the semantic model and report, binds the report to the model, binds each data source
+with the credential type it needs (the Defender API as a Service Principal; Microsoft's public
+release-notes and security-intelligence pages as Anonymous), generates the 30-day trend history,
+enables a scheduled refresh, and runs a first refresh so the report shows your real Defender data.
+
+> **Outbound access.** Refresh reaches three hosts: `api.securitycenter.microsoft.com` (your estate),
+> plus `learn.microsoft.com` and `www.microsoft.com` (the published-version baselines). The latter two
+> are public and unauthenticated; if they are blocked, the baseline table falls back to the snapshot
+> captured at deploy time and everything else still works.
 
 > **Prefer prompts to switches?** Run `pwsh ./deploy/Deploy-Dashboard.ps1` with **no parameters** to
 > launch a guided wizard that walks you through config, workspace and options (see *Guided mode*).

@@ -111,14 +111,15 @@ foreach ($jf in $jsonFiles) {
 
 # ---------------------------------------------------------------- placeholders
 foreach ($pair in @(
-    @{ File = 'LegacyAvMigration.tmdl'; Token = '__LEGACYMIGRATION_SEED_B64__' },
-    @{ File = 'DeploymentTrend.tmdl';   Token = '__TREND_SEED_B64__' },
-    @{ File = 'DeviceHealth.tmdl';      Token = '__AVPOSTURE_SEED_B64__' })) {
+    @{ File = 'LegacyAvMigration.tmdl'; Token = '__LEGACYMIGRATION_SEED_B64__'; Note = 'it may contain customer device data' },
+    @{ File = 'DeploymentTrend.tmdl';   Token = '__TREND_SEED_B64__';           Note = 'it may contain customer device data' },
+    @{ File = 'DeviceHealth.tmdl';      Token = '__AVPOSTURE_SEED_B64__';       Note = 'it may contain customer device data' },
+    @{ File = 'Baselines.tmdl';         Token = '__BASELINE_SEED_B64__';        Note = 'the fallback versions would be frozen at whenever it was materialised' })) {
     $p = Join-Path $modelDir "definition\tables\$($pair.File)"
     if (-not (Test-Path -LiteralPath $p)) { [void]$errors.Add("Missing table file $($pair.File)"); continue }
     $txt = Get-Content -LiteralPath $p -Raw
     if ($txt -notmatch [regex]::Escape($pair.Token)) {
-        [void]$warnings.Add("$($pair.File) is MATERIALISED (no $($pair.Token) placeholder) - run -RestorePlaceholder before committing; it may contain customer device data.")
+        [void]$warnings.Add("$($pair.File) is MATERIALISED (no $($pair.Token) placeholder) - run -RestorePlaceholder before committing; $($pair.Note).")
     }
 }
 

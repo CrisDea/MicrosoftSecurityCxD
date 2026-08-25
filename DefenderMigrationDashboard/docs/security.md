@@ -36,6 +36,7 @@ of unbounded tables requires a paginated (.rdl) report over the same model.
 | Publish semantic model + report | Workspace Admin or Member on the target workspace | Power BI role |
 | Service-principal deployment | "Service principals can use Fabric APIs" tenant setting + workspace role | Tenant setting |
 | Live data (Defender export APIs + trend seed) | WindowsDefenderATP `Machine.Read.All`, `Software.Read.All`, `Vulnerability.Read.All`, `AdvancedQuery.Read.All` | Application |
+| Published-version baselines (`learn.microsoft.com`, `www.microsoft.com`) | None — public pages, bound Anonymous | Anonymous |
 
 Full details, who grants each permission, and how to verify: see **[PERMISSIONS.md](PERMISSIONS.md)**.
 Step-by-step install with a decision tree and troubleshooting: see **[INSTALL.md](INSTALL.md)**.

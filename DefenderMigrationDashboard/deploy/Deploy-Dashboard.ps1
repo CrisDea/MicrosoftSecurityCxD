@@ -316,6 +316,8 @@ try {
     if ($RemovedAfterDays -gt 0) { Write-Ok "Removed-device cutoff: dropping devices not seen in the last $RemovedAfterDays days" }
     $seedOverride = New-TrendSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret
     $avOverride = New-AvPostureSeedOverride -ModelDir $modelDir -TenantId $graphTenant -ClientId $graphClient -ClientSecret $graphSecret -RemovedAfterDays $RemovedAfterDays
+    # Fallback snapshot only: Baselines scrapes learn.microsoft.com + WDSI live on every refresh.
+    $baselineOverride = New-BaselineSeedOverride -ModelDir $modelDir
     if (-not $LegacyCsv -and $cfg.ContainsKey('legacyCsv')) { $LegacyCsv = $cfg.legacyCsv }
     if (-not $LegacyCsv -and $cfg.ContainsKey('trendCsv'))  { $LegacyCsv = $cfg.trendCsv }
     if (-not $PSBoundParameters.ContainsKey('LegacyMode')) {
@@ -331,6 +333,7 @@ try {
     $overrides = @{}
     if ($seedOverride)      { foreach ($k in $seedOverride.Keys)      { $overrides[$k] = $seedOverride[$k] } }
     if ($avOverride)        { foreach ($k in $avOverride.Keys)        { $overrides[$k] = $avOverride[$k] } }
+    if ($baselineOverride)  { foreach ($k in $baselineOverride.Keys)  { $overrides[$k] = $baselineOverride[$k] } }
     if ($legacyMapOverride) { foreach ($k in $legacyMapOverride.Keys) { $overrides[$k] = $legacyMapOverride[$k] } }
     if ($overrides.Count -eq 0) { $overrides = $null }
     if ($isLive) { Write-Ok "Live model: DeviceHealth binds to Defender via a Service Principal; trend history + AV posture materialised at deploy" }

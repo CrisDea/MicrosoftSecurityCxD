@@ -2,11 +2,11 @@
   "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/report/definition/visualContainer/2.1.0/schema.json",
   "name": "vcbaseline0000000001",
   "position": {
-    "x": 1068.0,
-    "y": 609.0,
+    "x": 1040.0,
+    "y": 576.0,
     "z": 4100,
-    "height": 177.0,
-    "width": 348.0,
+    "height": 210.0,
+    "width": 376.0,
     "tabOrder": 4100
   },
   "visual": {
@@ -24,10 +24,25 @@
                       "Entity": "Baselines"
                     }
                   },
-                  "Property": "Metric"
+                  "Property": "Platform"
                 }
               },
-              "queryRef": "Baselines.Metric",
+              "queryRef": "Baselines.Platform",
+              "nativeQueryRef": "Platform",
+              "active": true
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Baselines"
+                    }
+                  },
+                  "Property": "Component"
+                }
+              },
+              "queryRef": "Baselines.Component",
               "nativeQueryRef": "Component",
               "active": true
             },
@@ -45,9 +60,55 @@
               "queryRef": "Baselines.LatestVersion",
               "nativeQueryRef": "Latest published",
               "active": true
+            },
+            {
+              "field": {
+                "Column": {
+                  "Expression": {
+                    "SourceRef": {
+                      "Entity": "Baselines"
+                    }
+                  },
+                  "Property": "Released"
+                }
+              },
+              "queryRef": "Baselines.Released",
+              "nativeQueryRef": "Released",
+              "active": true
             }
           ]
         }
+      },
+      "sortDefinition": {
+        "sort": [
+          {
+            "field": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Baselines"
+                  }
+                },
+                "Property": "Platform"
+              }
+            },
+            "direction": "Ascending"
+          },
+          {
+            "field": {
+              "Column": {
+                "Expression": {
+                  "SourceRef": {
+                    "Entity": "Baselines"
+                  }
+                },
+                "Property": "Component"
+              }
+            },
+            "direction": "Ascending"
+          }
+        ],
+        "isDefaultSort": true
       }
     },
     "objects": {
@@ -57,7 +118,7 @@
             "fontSize": {
               "expr": {
                 "Literal": {
-                  "Value": "9D"
+                  "Value": "8D"
                 }
               }
             },
@@ -102,7 +163,7 @@
             "fontSize": {
               "expr": {
                 "Literal": {
-                  "Value": "9D"
+                  "Value": "8D"
                 }
               }
             },
@@ -122,7 +183,7 @@
             "rowPadding": {
               "expr": {
                 "Literal": {
-                  "Value": "2D"
+                  "Value": "1D"
                 }
               }
             }

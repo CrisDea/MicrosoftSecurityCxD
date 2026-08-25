@@ -23,7 +23,10 @@ How the dashboard gets its data, what each page shows, and the design rules behi
    base64-encodes the aggregated result, and embeds it in the model. It is regenerated on every
    redeploy — so the trend advances each time you redeploy, while DeviceHealth stays live on the
    normal refresh cadence.
-3. No secret is ever written to the committed project files. The DeviceHealth query carries no
+3. **Baselines (what Microsoft currently publishes)** — read live on every refresh from
+   `learn.microsoft.com` and `www.microsoft.com`, both bound **Anonymous / Public**. See
+   ["Latest version" baselines](#latest-version-baselines) below.
+4. No secret is ever written to the committed project files. The DeviceHealth query carries no
    credentials, and the trend table carries only a base64 placeholder that the deploy script fills.
 
 ## Third-party AV / EDR classification
@@ -35,10 +38,36 @@ Falcon, SentinelOne, Carbon Black, Cortex XDR, Cybereason, Tanium, and more for 
 generic across estates. Machines with none detected fall into a **None** bucket so the bars total the
 full estate.
 
-## Setting "latest version" baselines
-Compliance measures compare each device against a **LatestBaselines** control table
-(signature / engine / platform / sensor). Edit those values (in the model, or via the `Latest*`
-parameters) to your current target versions — no query changes needed.
+## "Latest version" baselines
+
+Two different questions get asked about versions, and the dashboard answers both:
+
+| Question | Where it comes from |
+|---|---|
+| Is this device on the newest version *anyone in this estate* is running? | Derived from the estate itself at refresh — the per-OS-build maximum observed across your own devices. This is the marker that grades every device green / amber / red. |
+| Is that estate-wide newest version actually *current with Microsoft*? | The **Baselines** table, read live from Microsoft's own pages. |
+
+The second is what stops a fleet that is uniformly six months behind from reporting itself 100% compliant.
+
+**Baselines refreshes itself.** It is not a hand-maintained list — it re-reads two public,
+unauthenticated Microsoft pages on **every dataset refresh**:
+
+- [Defender for Endpoint release notes](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-releases)
+  — the Windows AV engine and platform, the Windows EDR sensor build, and the current macOS, Linux,
+  Android and iOS builds.
+- [WDSI security intelligence updates](https://www.microsoft.com/en-us/wdsi/defenderupdates)
+  — the AV signature version. It changes several times a day and is deliberately not carried on the
+  release-notes page, so it has to come from here.
+
+Both are plain GETs bound **Anonymous / Public**, and neither response is used to build the other's
+request, so the pair satisfies the Power Query data-combination firewall on cloud refresh. The deploy
+script also captures a snapshot of the same values and embeds it as a per-row fallback: if a page is
+unreachable or is restructured, that row degrades to last-known-good rather than failing the refresh.
+The `Source` and `RetrievedUtc` columns record which page each value came from and when, so a stale
+value is visible rather than silent.
+
+The release-notes table is not in date order and its month column is inconsistent free text, so rows
+are ranked by build version rather than by date.
 
 The "stale" threshold is a parameter (`StaleAfterDays`, default 7). Agree the value with the customer.
 

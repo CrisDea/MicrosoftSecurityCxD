@@ -347,7 +347,7 @@ function Test-ProjectIntegrity {
         foreach ($f in @("model.tmdl", "database.tmdl")) {
             if (-not (Test-Path -LiteralPath (Join-Path $mdef $f))) { $issues.Add("Missing semantic-model file: definition\$f") }
         }
-        $needTables = [ordered]@{ "DeviceHealth.tmdl" = "__AVPOSTURE_SEED_B64__"; "DeploymentTrend.tmdl" = "__TREND_SEED_B64__"; "LegacyAvMigration.tmdl" = "__LEGACYMIGRATION_SEED_B64__" }
+        $needTables = [ordered]@{ "DeviceHealth.tmdl" = "__AVPOSTURE_SEED_B64__"; "DeploymentTrend.tmdl" = "__TREND_SEED_B64__"; "LegacyAvMigration.tmdl" = "__LEGACYMIGRATION_SEED_B64__"; "Baselines.tmdl" = "__BASELINE_SEED_B64__" }
         foreach ($t in $needTables.Keys) {
             $tp = Join-Path $mdef "tables\$t"
             if (-not (Test-Path -LiteralPath $tp)) { $issues.Add("Missing table definition: definition\tables\$t"); continue }
@@ -1130,6 +1130,208 @@ function Get-DefenderTrendSnapshot {
     return $out
 }
 
+function Get-LatestMicrosoftVersions {
+    <# Scrapes the two public Microsoft pages that publish current Defender component versions
+       and returns one object per component. This mirrors, in PowerShell, the exact parse the
+       Baselines Power Query partition performs at refresh time, so the deploy-time fallback
+       seed can never disagree with the live query about shape or naming.
+
+         learn.microsoft.com/.../microsoft-defender-endpoint-releases
+             Windows AV platform + engine, the Windows EDR sensor build, and the current
+             macOS / Linux / Android / iOS builds.
+         microsoft.com/en-us/wdsi/defenderupdates
+             The AV security-intelligence (signature) version. It moves several times a day
+             and is deliberately not carried on the Learn release-notes page.
+
+       Any component that cannot be parsed comes back with a $null LatestVersion so the caller
+       can decide whether to substitute a floor value. Never throws. #>
+    param([int]$TimeoutSec = 45)
+
+    $ua = "DefenderMigrationDashboard"
+
+    $deTag = {
+        param([string]$t)
+        if (-not $t) { return "" }
+        $s = [regex]::Replace($t, '<br\s*/?>', ' ; ')
+        $s = [regex]::Replace($s, '<[^>]*>', '')
+        $s = $s.Replace('&amp;', '&').Replace('&lt;', '<').Replace('&gt;', '>').Replace('&nbsp;', ' ')
+        return $s.Trim()
+    }
+    # Fixed-width zero-padded key: 10 digits per segment because iOS builds
+    # (1.1.80120102) need eight. Identical to VerKey() in the M partition.
+    $verKey = {
+        param([string]$v)
+        if (-not $v) { return ('0' * 40) }
+        $p = $v.Split('.'); $k = ""
+        for ($i = 0; $i -lt 4; $i++) {
+            $d = ""
+            if ($i -lt $p.Count) { $d = ($p[$i] -replace '[^0-9]', '') }
+            if (-not $d) { $d = "0" }
+            $k += $d.PadLeft(10, '0')
+        }
+        return $k
+    }
+    # Leading version token after optional ":", "-", "*" or spaces.
+    $firstVer = {
+        param([string]$t)
+        if (-not $t) { return $null }
+        $m = [regex]::Match($t, '^[\s:\*\-]*([0-9][0-9\.]*)')
+        if (-not $m.Success) { return $null }
+        $v = $m.Groups[1].Value.TrimEnd('.')
+        if ($v) { return $v } else { return $null }
+    }
+    $afterLabel = {
+        param([string]$block, [string]$label)
+        if (-not $block) { return $null }
+        $i = $block.IndexOf($label, [StringComparison]::OrdinalIgnoreCase)
+        if ($i -lt 0) { return $null }
+        return (& $firstVer $block.Substring($i + $label.Length))
+    }
+
+    # ---- source 1: Defender for Endpoint release notes ---------------------
+    $releases = New-Object System.Collections.ArrayList
+    try {
+        $learn = (Invoke-WebRequest -Uri "https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-releases" `
+                    -UseBasicParsing -TimeoutSec $TimeoutSec -Headers @{ "User-Agent" = $ua }).Content
+        $a = $learn.IndexOf("All supported releases by date")
+        if ($a -ge 0) {
+            $after = $learn.Substring($a)
+            $s = $after.IndexOf("<tbody>"); $e = $after.IndexOf("</tbody>")
+            if ($s -ge 0 -and $e -gt $s) {
+                $body = $after.Substring($s + 7, $e - $s - 7)
+                foreach ($r in @($body -split '<tr>' | Select-Object -Skip 1)) {
+                    $cells = @(@($r -split '<td>' | Select-Object -Skip 1) | ForEach-Object {
+                        $c = $_; $k = $c.IndexOf("</td>")
+                        if ($k -ge 0) { $c = $c.Substring(0, $k) }
+                        & $deTag $c
+                    })
+                    if ($cells.Count -ge 4) {
+                        [void]$releases.Add([pscustomobject]@{ OS = $cells[0]; Build = $cells[1]; Month = $cells[2]; Details = $cells[3] })
+                    }
+                }
+            }
+        }
+        if ($releases.Count -eq 0) { Write-Warn2 "Defender release notes reachable but no release rows parsed - the page layout may have changed." }
+    } catch {
+        Write-Warn2 "Could not read the Defender release notes ($($_.Exception.Message))."
+    }
+
+    # Newest row for an OS, ranked by build rather than by the free-text month
+    # column: the Learn table is not strictly in date order.
+    $newest = {
+        param([string]$os)
+        $hits = @($releases | Where-Object { $_.OS.Trim() -ieq $os })
+        if ($hits.Count -eq 0) { return $null }
+        return (@($hits | Sort-Object -Property @{ Expression = { & $verKey $_.Build } } -Descending))[0]
+    }
+    $winAv  = & $newest "Windows Antivirus"
+    $winEdr = & $newest "Windows"
+    $mac    = & $newest "macOS"
+    $lin    = & $newest "Linux"
+    $droid  = & $newest "Android"
+    $ios    = & $newest "iOS"
+
+    # ---- source 2: WDSI security-intelligence version ----------------------
+    $sig = $null
+    try {
+        $w = (Invoke-WebRequest -Uri "https://www.microsoft.com/en-us/wdsi/defenderupdates" `
+                -UseBasicParsing -TimeoutSec $TimeoutSec -Headers @{ "User-Agent" = $ua }).Content
+        $a = $w.IndexOf("The latest security intelligence update is:")
+        if ($a -ge 0) {
+            $blk = $w.Substring($a)
+            $z = $blk.IndexOf("</ul>")
+            if ($z -gt 0) { $blk = $blk.Substring(0, $z) }
+            # The first "Version:" in that block is the signature one; "Engine
+            # Version:" and "Platform Version:" follow it.
+            $vi = $blk.IndexOf("Version:")
+            if ($vi -ge 0) {
+                $sp = $blk.IndexOf("<span>", $vi)
+                if ($sp -ge 0) { $sig = & $firstVer $blk.Substring($sp + 6) }
+            }
+        }
+        if (-not $sig) { Write-Warn2 "WDSI reachable but the security-intelligence version could not be parsed." }
+    } catch {
+        Write-Warn2 "Could not read the WDSI security-intelligence page ($($_.Exception.Message))."
+    }
+
+    $mo = { param($r) if ($r) { return [string]$r.Month } else { return $null } }
+    $bd = { param($r) if ($r) { return [string]$r.Build } else { return $null } }
+    $dt = { param($r) if ($r) { return [string]$r.Details } else { return $null } }
+
+    return @(
+        [pscustomobject]@{ SortOrder = 1; Platform = "Windows"; Component = "AV security intelligence"; LatestVersion = $sig;                                        Released = "Updated daily";  Source = "WDSI"  }
+        [pscustomobject]@{ SortOrder = 2; Platform = "Windows"; Component = "AV engine";                LatestVersion = (& $afterLabel (& $dt $winAv) "Engine:");     Released = (& $mo $winAv);   Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 3; Platform = "Windows"; Component = "AV platform";             LatestVersion = (& $afterLabel (& $dt $winAv) "Platform:");   Released = (& $mo $winAv);   Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 4; Platform = "Windows"; Component = "EDR sensor";              LatestVersion = (& $bd $winEdr);                              Released = (& $mo $winEdr);  Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 5; Platform = "macOS";   Component = "MDE build";               LatestVersion = (& $bd $mac);                                 Released = (& $mo $mac);     Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 6; Platform = "Linux";   Component = "MDE build";               LatestVersion = (& $bd $lin);                                 Released = (& $mo $lin);     Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 7; Platform = "Android"; Component = "MDE build";               LatestVersion = (& $bd $droid);                               Released = (& $mo $droid);   Source = "Learn" }
+        [pscustomobject]@{ SortOrder = 8; Platform = "iOS";     Component = "MDE build";               LatestVersion = (& $bd $ios);                                 Released = (& $mo $ios);     Source = "Learn" }
+    )
+}
+function New-BaselineSeedOverride {
+    <# Fills the Baselines __BASELINE_SEED_B64__ placeholder with a deploy-time snapshot of the
+       versions Microsoft currently publishes. Unlike the trend and AV-posture seeds this is NOT
+       the primary data path: the Baselines partition scrapes learn.microsoft.com and WDSI live on
+       every dataset refresh, so the table stays current between deploys. The seed exists purely as
+       a per-row fallback, so a page being unreachable or reshaped degrades the table to
+       last-known-good instead of failing the refresh.
+
+       Three tiers of resilience: live at refresh -> this deploy-time snapshot -> the floor values
+       below (used only when the deploying machine cannot reach the pages either). Returns $null
+       when the model has no placeholder. Never throws. #>
+    param([string]$ModelDir)
+    $p = Join-Path $ModelDir "definition\tables\Baselines.tmdl"
+    if (-not (Test-Path -LiteralPath $p)) { return $null }
+    $txt = Get-Content -LiteralPath $p -Raw
+    if ($txt -notmatch '__BASELINE_SEED_B64__') { return $null }
+
+    # Floor: last-known-good at authoring time. Only ever surfaces if BOTH the refresh-time
+    # scrape and the deploy-time scrape fail, which would otherwise leave the table empty.
+    $floor = @{
+        "Windows|AV security intelligence" = @("1.457.332.0",    "Updated daily")
+        "Windows|AV engine"                = @("1.1.26070.7",    "July 2026")
+        "Windows|AV platform"              = @("4.18.26070.9",   "July 2026")
+        "Windows|EDR sensor"               = @("10.8821",        "February 2026")
+        "macOS|MDE build"                  = @("101.26062.0012", "August 2026")
+        "Linux|MDE build"                  = @("101.26062.0007", "August 2026")
+        "Android|MDE build"                = @("1.0.9129.0101",  "Aug 2026")
+        "iOS|MDE build"                    = @("1.1.80120102",   "Aug 2026")
+    }
+
+    $rows = @(Get-LatestMicrosoftVersions)
+    $out  = New-Object System.Collections.ArrayList
+    $live = 0; $fell = 0
+    foreach ($r in $rows) {
+        $v = [string]$r.LatestVersion
+        $rel = [string]$r.Released
+        if (-not $v) {
+            $key = "$($r.Platform)|$($r.Component)"
+            if ($floor.ContainsKey($key)) { $v = $floor[$key][0]; $rel = $floor[$key][1] }
+            $fell++
+        } else { $live++ }
+        [void]$out.Add([ordered]@{
+            SortOrder     = [int]$r.SortOrder
+            Platform      = [string]$r.Platform
+            Component     = [string]$r.Component
+            LatestVersion = $v
+            Released      = $rel
+            Source        = [string]$r.Source
+        })
+    }
+
+    # PowerShell 5.1 serialises an [ordered] hashtable as a JSON object, but a
+    # single-element array collapses to a bare object - force the array form.
+    $plain = @($out | ForEach-Object { [pscustomobject]$_ })
+    $json  = $plain | ConvertTo-Json -Depth 4 -Compress
+    if ($plain.Count -eq 1) { $json = "[$json]" }
+
+    if ($fell -eq 0) { Write-Ok "Version baselines refreshed from Microsoft: $live of $($rows.Count) components read live." }
+    else             { Write-Warn2 "Version baselines: $live read live, $fell fell back to last-known-good. The dashboard re-reads both pages on every refresh, so this self-corrects." }
+
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+    return @{ "definition/tables/Baselines.tmdl" = $txt.Replace('__BASELINE_SEED_B64__', $b64) }
+}
 function New-TrendSeedOverride {
     <# Generates the DeploymentTrend history at deploy time and returns a Get-Parts override
        that embeds it in the model. The advanced-hunting endpoint is POST-only and cannot run
@@ -1261,10 +1463,10 @@ function Set-LiveCredentials {
        consented) on WindowsDefenderATP. The bind is applied over REST and needs no manual UI
        step. It persists across model re-publishes. #>
     param([string]$WsId, [string]$DatasetId, [string]$TenantId, [string]$ClientId, [string]$ClientSecret)
-    Write-Step "Binding data-source credentials (Service Principal)"
-    if (-not ($TenantId -and $ClientId -and $ClientSecret)) {
-        Write-Warn2 "No app credentials supplied - skipping credential bind. Set them in the Service under the dataset > Data source credentials (Service principal)."
-        return
+    Write-Step "Binding data-source credentials"
+    $haveSp = [bool]($TenantId -and $ClientId -and $ClientSecret)
+    if (-not $haveSp) {
+        Write-Warn2 "No app credentials supplied - the Defender data source will not be bound. Set it in the Service under the dataset > Data source credentials (Service principal)."
     }
 
     # Datasource-credential management and the refresh schedule are both restricted to the
@@ -1288,13 +1490,38 @@ function Set-LiveCredentials {
         $gw = $d.gatewayId; $dsid = $d.datasourceId
         if (-not $gw -or -not $dsid) { continue }
         $u = $null; try { $u = $d.connectionDetails.url } catch {}
-        $body = @{ credentialDetails = @{
-            credentialType      = "ServicePrincipal"
-            credentials         = $credData
-            encryptedConnection = "NotEncrypted"
-            encryptionAlgorithm = "None"
-            privacyLevel        = "Organizational"
-        } }
+
+        # Two kinds of source live in this model and they need different credentials:
+        #   api.securitycenter.microsoft.com  -> Service Principal (app-only OAuth2). Power BI
+        #                                        mints the bearer token itself.
+        #   learn.microsoft.com / microsoft.com -> Anonymous. These are the public pages the
+        #                                        Baselines table scrapes for the versions
+        #                                        Microsoft currently publishes. Binding them
+        #                                        Public also keeps the two of them combinable
+        #                                        under the Power Query privacy firewall.
+        # Binding an SP to a public web page fails, so switch on the URL rather than
+        # blanket-applying one credential type to every source.
+        $isDefender = ($u -and $u -match 'securitycenter\.microsoft\.com')
+        if ($isDefender) {
+            if (-not $haveSp) { continue }
+            $kind = "Service Principal"
+            $body = @{ credentialDetails = @{
+                credentialType      = "ServicePrincipal"
+                credentials         = $credData
+                encryptedConnection = "NotEncrypted"
+                encryptionAlgorithm = "None"
+                privacyLevel        = "Organizational"
+            } }
+        } else {
+            $kind = "Anonymous"
+            $body = @{ credentialDetails = @{
+                credentialType      = "Anonymous"
+                credentials         = '{"credentialData":[]}'
+                encryptedConnection = "NotEncrypted"
+                encryptionAlgorithm = "None"
+                privacyLevel        = "Public"
+            } }
+        }
         # Ownership can take a few seconds to propagate to the datasource-management authorization
         # check, so retry the bind briefly on 401 (DMTS_NotEnoughPermissionToManangeDatasourceErrorCode)
         # instead of failing on the first attempt.
@@ -1303,7 +1530,7 @@ function Set-LiveCredentials {
             try {
                 Invoke-Http -Method PATCH -Resource $script:PowerBIRes -Body $body `
                     -Url "$script:PowerBIBase/gateways/$gw/datasources/$dsid" | Out-Null
-                Write-Ok "Service Principal bound ($u)"
+                Write-Ok "$kind bound ($u)"
                 $bound = $true
             } catch {
                 if ($try -lt 4 -and $_.Exception.Message -match "DMTS_NotEnoughPermissionToManangeDatasourceErrorCode|HTTP 401") {
@@ -1311,7 +1538,7 @@ function Set-LiveCredentials {
                     Start-Sleep -Seconds ([Math]::Min(20, 5 * $try))
                     continue
                 }
-                Write-Warn2 "Service Principal bind failed for $u : $($_.Exception.Message). Bind it manually in the Service (Data source credentials > Service principal)."
+                Write-Warn2 "$kind bind failed for $u : $($_.Exception.Message). Bind it manually in the Service (dataset > Data source credentials)."
             }
         }
     }

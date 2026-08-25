@@ -6,6 +6,29 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.20.17] - 2026-08-20
+
+### Changed
+- **Version baselines are now live.** The "Latest published by Microsoft" table on Version
+  Compliance was a hardcoded four-row list that had gone stale on every single value (AV
+  signature 1.453.250.0, engine 1.1.26050.11, platform 4.18.26050.15, sensor 10.8805). It now
+  reads the two authoritative Microsoft pages on every dataset refresh, so it stays correct
+  between deploys instead of drifting until someone remembers to edit it:
+  - the [Defender for Endpoint release notes](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-releases)
+    for the AV engine and platform, the Windows EDR sensor build, and the current macOS,
+    Linux, Android and iOS builds;
+  - the [WDSI security intelligence page](https://www.microsoft.com/en-us/wdsi/defenderupdates)
+    for the AV signature version, which changes several times a day and is deliberately not
+    carried on the release-notes page.
+- The table now covers **all five platforms** rather than Windows only, and reports the
+  release month and which page each value came from alongside the version.
+
+### Added
+- Anonymous credential binding for the two public Microsoft pages. `Set-LiveCredentials`
+  previously applied the Service Principal to every data source it found, which would have
+  failed for anonymous web sources; it now selects the credential type per source URL.
+- A deploy-time snapshot of the published versions as a per-row fallback, so an unreachable or
+  restructured source page degrades that row to last-known-good instead of failing the refresh.
 ## [2026.08.20.16] - 2026-08-20
 
 ### Changed - pages now explain their own numbers instead of looking broken

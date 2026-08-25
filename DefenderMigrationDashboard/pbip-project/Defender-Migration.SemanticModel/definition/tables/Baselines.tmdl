@@ -1,25 +1,212 @@
 table Baselines
 
-	column Metric
+	column Platform
 		dataType: string
-		sourceColumn: Metric
+		sourceColumn: Platform
+		sortByColumn: PlatformOrder
+
+	column Component
+		dataType: string
+		sourceColumn: Component
+		sortByColumn: ComponentOrder
 
 	column LatestVersion
 		dataType: string
 		sourceColumn: LatestVersion
 
+	column Released
+		dataType: string
+		sourceColumn: Released
+
+	column Source
+		dataType: string
+		sourceColumn: Source
+
+	column RetrievedUtc
+		dataType: string
+		sourceColumn: RetrievedUtc
+
+	column PlatformOrder
+		dataType: int64
+		formatString: 0
+		sourceColumn: PlatformOrder
+		isHidden
+
+	column ComponentOrder
+		dataType: int64
+		formatString: 0
+		sourceColumn: ComponentOrder
+		isHidden
+
+	column SortOrder
+		dataType: int64
+		formatString: 0
+		sourceColumn: SortOrder
+		isHidden
+
 	partition Baselines = m
 		mode: import
 		source =
 				let
-				    Source = #table(
-				        type table [Metric=text, LatestVersion=text],
-				        {
-					{"AV Signature", "1.453.250.0"},
-					{"AV Engine", "1.1.26050.11"},
-					{"Defender Platform", "4.18.26050.15"},
-					{"MDE Sensor", "10.8805"}
-				        }
-				    )
+				    // ------------------------------------------------------------------
+				    // The versions Microsoft currently publishes as latest, refreshed LIVE
+				    // on every dataset refresh from two public, unauthenticated pages:
+				    //
+				    //   learn.microsoft.com/.../microsoft-defender-endpoint-releases
+				    //     -> Windows AV platform + engine, the Windows EDR sensor build,
+				    //        and the current macOS / Linux / Android / iOS builds.
+				    //   microsoft.com/en-us/wdsi/defenderupdates
+				    //     -> the AV security-intelligence (signature) version. That moves
+				    //        several times a day and is deliberately NOT carried on the
+				    //        Learn release-notes page, so it has to come from WDSI.
+				    //
+				    // Both are plain GETs against a string-LITERAL base URL, so the data
+				    // source identity is stable and scheduled refresh stays valid. Neither
+				    // response is ever used to build the other request - the two are only
+				    // unioned into one table - so the Power Query data-combination firewall
+				    // is satisfied. Both bind Anonymous/Public at deploy time.
+				    //
+				    // Every lookup is wrapped in try/otherwise and falls back to the
+				    // seed below, a snapshot the deploy script captures from the same two
+				    // pages. If a page is unreachable or changes shape the table degrades
+				    // to last-known-good instead of breaking the whole refresh.
+				    // ------------------------------------------------------------------
+				    NowUtc = DateTime.From(DateTimeZone.UtcNow()),
+				    Pad2   = (n as number) as text => Text.PadStart(Text.From(n), 2, "0"),
+				    AsOf   = Text.From(Date.Year(NowUtc)) & "-" & Pad2(Date.Month(NowUtc)) & "-" & Pad2(Date.Day(NowUtc))
+				             & " " & Pad2(Time.Hour(NowUtc)) & ":" & Pad2(Time.Minute(NowUtc)) & " UTC",
+				
+				    // Fixed-width zero-padded key so "101.26062.0012" ranks above
+				    // "101.26052.0012" and "4.18.25040.1" under a plain text comparison.
+				    // 10 digits per segment: iOS builds such as 1.1.80120102 need 8.
+				    VerKey = (v as any) as text =>
+				        let s   = if v = null then "" else Text.From(v),
+				            p   = Text.Split(s, "."),
+				            seg = (i as number) as text =>
+				                    let d = if i < List.Count(p) then Text.Select(p{i}, {"0".."9"}) else ""
+				                    in Text.PadStart(if d = "" then "0" else d, 10, "0")
+				        in Text.Combine(List.Transform({0, 1, 2, 3}, seg), ""),
+				
+				    // Leading version token: ": 4.18.26070.9 ; - Engine" -> "4.18.26070.9".
+				    FirstVer = (t as any) as nullable text =>
+				        let s    = if t = null then "" else Text.From(t),
+				            trim = Text.TrimStart(s, {" ", ":", "*", "-"}),
+				            run  = Text.Combine(List.FirstN(Text.ToList(trim),
+				                       each List.Contains({"0","1","2","3","4","5","6","7","8","9","."}, _)), ""),
+				            cut  = Text.TrimEnd(run, ".")
+				        in if cut = "" then null else cut,
+				
+				    AfterLabel = (block as any, label as text) as nullable text =>
+				        let s = if block = null then "" else Text.From(block),
+				            a = Text.AfterDelimiter(s, label)
+				        in if a = "" then null else FirstVer(a),
+				
+				    // Strip HTML tags; <br> becomes a separator so list items stay apart.
+				    DeTag = (t as text) as text =>
+				        let br   = Text.Replace(Text.Replace(Text.Replace(t, "<br>", " ; "), "<br/>", " ; "), "<br />", " ; "),
+				            segs = Text.Split(br, "<"),
+				            txt  = List.Transform(segs, each let k = Text.PositionOf(_, ">") in if k = -1 then _ else Text.Middle(_, k + 1)),
+				            dec  = Text.Replace(Text.Replace(Text.Replace(Text.Combine(txt, ""), "&amp;", "&"), "&lt;", "<"), "&gt;", ">")
+				        in Text.Trim(dec),
+				
+				    // ---- source 1: Defender for Endpoint release notes ----------------
+				    LearnHtml = Text.FromBinary(
+				        Web.Contents("https://learn.microsoft.com",
+				            [ RelativePath = "en-us/defender-endpoint/microsoft-defender-endpoint-releases",
+				              Headers      = [#"User-Agent" = "DefenderMigrationDashboard"] ]), TextEncoding.Utf8),
+				
+				    // "All supported releases by date" is the first table after that heading.
+				    Body     = Text.BetweenDelimiters(Text.AfterDelimiter(LearnHtml, "All supported releases by date"), "<tbody>", "</tbody>"),
+				    RowsHtml = List.Skip(Text.Split(Body, "<tr>"), 1),
+				    Cells    = List.Transform(RowsHtml, each
+				                   List.Transform(List.Skip(Text.Split(_, "<td>"), 1),
+				                                  each DeTag(Text.BeforeDelimiter(_, "</td>")))),
+				    Releases = List.Select(
+				                   List.Transform(Cells, each if List.Count(_) >= 4
+				                       then [OS = _{0}, Build = _{1}, Month = _{2}, Details = _{3}] else null),
+				                   each _ <> null),
+				
+				    // Newest row for an OS, ranked by build rather than by the free-text
+				    // month column - the Learn table is not strictly in date order.
+				    Newest = (osName as text) as nullable record =>
+				        let hits = List.Select(Releases, each Comparer.OrdinalIgnoreCase(Text.Trim(_[OS]), osName) = 0),
+				            rank = List.Sort(hits, (a, b) => Value.Compare(VerKey(b[Build]), VerKey(a[Build])))
+				        in if List.Count(rank) = 0 then null else rank{0},
+				
+				    Fld = (r as any, f as text) as nullable text =>
+				        if r = null then null else (try Text.From(Record.Field(r, f)) otherwise null),
+				
+				    WinAv   = try Newest("Windows Antivirus") otherwise null,
+				    WinEdr  = try Newest("Windows")           otherwise null,
+				    Mac     = try Newest("macOS")             otherwise null,
+				    Lin     = try Newest("Linux")             otherwise null,
+				    Droid   = try Newest("Android")           otherwise null,
+				    Ios     = try Newest("iOS")               otherwise null,
+				
+				    // ---- source 2: WDSI security-intelligence version -----------------
+				    WdsiHtml = Text.FromBinary(
+				        Web.Contents("https://www.microsoft.com",
+				            [ RelativePath = "en-us/wdsi/defenderupdates",
+				              Headers      = [#"User-Agent" = "DefenderMigrationDashboard"] ]), TextEncoding.Utf8),
+				    WdsiBlock = Text.BetweenDelimiters(WdsiHtml, "The latest security intelligence update is:", "</ul>"),
+				    // First "Version:" in that block is the signature one; "Engine Version:"
+				    // and "Platform Version:" follow it and are cross-checks only.
+				    SigVer = try FirstVer(Text.AfterDelimiter(Text.AfterDelimiter(WdsiBlock, "Version:"), "<span>")) otherwise null,
+				
+				    // ---- assemble -----------------------------------------------------
+				    Live = {
+				        [ SortOrder = 1, Platform = "Windows", Component = "AV security intelligence",
+				          LatestVersion = SigVer,                                          Released = "Updated daily",  Source = "WDSI"  ],
+				        [ SortOrder = 2, Platform = "Windows", Component = "AV engine",
+				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Engine:"),    Released = Fld(WinAv, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 3, Platform = "Windows", Component = "AV platform",
+				          LatestVersion = AfterLabel(Fld(WinAv, "Details"), "Platform:"),  Released = Fld(WinAv, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 4, Platform = "Windows", Component = "EDR sensor",
+				          LatestVersion = Fld(WinEdr, "Build"),                            Released = Fld(WinEdr, "Month"), Source = "Learn" ],
+				        [ SortOrder = 5, Platform = "macOS",   Component = "MDE build",
+				          LatestVersion = Fld(Mac, "Build"),                               Released = Fld(Mac, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 6, Platform = "Linux",   Component = "MDE build",
+				          LatestVersion = Fld(Lin, "Build"),                               Released = Fld(Lin, "Month"),    Source = "Learn" ],
+				        [ SortOrder = 7, Platform = "Android", Component = "MDE build",
+				          LatestVersion = Fld(Droid, "Build"),                             Released = Fld(Droid, "Month"),  Source = "Learn" ],
+				        [ SortOrder = 8, Platform = "iOS",     Component = "MDE build",
+				          LatestVersion = Fld(Ios, "Build"),                               Released = Fld(Ios, "Month"),    Source = "Learn" ]
+				    },
+				
+				    // ---- fall back per row to the deploy-time snapshot -----------------
+				    Seed = try Json.Document(Binary.FromText("__BASELINE_SEED_B64__", BinaryEncoding.Base64)) otherwise {},
+				    SeedOf = (plat as text, comp as text, field as text) as nullable text =>
+				        let hit = List.Select(Seed, each (try (_[Platform] = plat and _[Component] = comp) otherwise false))
+				        in if List.Count(hit) = 0 then null else (try Text.From(Record.Field(hit{0}, field)) otherwise null),
+				
+				    // Display ordinals. Each is 1:1 with its text column, which is what the
+				    // sortByColumn relationship requires.
+				    PlatOrder = (p as text) as number =>
+				        let i = List.PositionOf({"Windows", "macOS", "Linux", "Android", "iOS"}, p) in if i < 0 then 99 else i + 1,
+				    CompOrder = (c as text) as number =>
+				        let i = List.PositionOf({"AV security intelligence", "AV engine", "AV platform", "EDR sensor", "MDE build"}, c) in if i < 0 then 99 else i + 1,
+
+				    Resolve = (r as record) as record =>
+				        let live = r[LatestVersion],
+				            ok   = live <> null and live <> "",
+				            v    = if ok then live else SeedOf(r[Platform], r[Component], "LatestVersion"),
+				            rel  = if ok then r[Released] else SeedOf(r[Platform], r[Component], "Released"),
+				            got  = v <> null and v <> ""
+				        in [ SortOrder      = r[SortOrder],
+				             PlatformOrder  = PlatOrder(r[Platform]),
+				             ComponentOrder = CompOrder(r[Component]),
+				             Platform      = r[Platform],
+				             Component     = r[Component],
+				             LatestVersion = if got then v else "Unavailable",
+				             Released      = if rel = null then "" else rel,
+				             Source        = if not got then "Unavailable" else (if ok then r[Source] else "Cached at deploy"),
+				             RetrievedUtc  = AsOf ],
+				
+				    Rows   = List.Transform(Live, Resolve),
+				    Result = Table.FromRecords(Rows,
+				        type table [ SortOrder = Int64.Type, PlatformOrder = Int64.Type, ComponentOrder = Int64.Type,
+				                     Platform = text, Component = text,
+				                     LatestVersion = text, Released = text, Source = text, RetrievedUtc = text ]),
+				    Sorted = Table.Sort(Result, {{"SortOrder", Order.Ascending}})
 				in
-				    Source
+				    Sorted

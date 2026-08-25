@@ -20,7 +20,7 @@
               {
                 "textRuns": [
                   {
-                    "value": "AV signature, engine, platform and EDR sensor versions graded per exact OS build: green = current, amber = behind, red = out of date. Percentages cover devices that report the component; N/A means the device does not report it.",
+                    "value": "AV signature, engine, platform and EDR sensor versions graded per exact OS build: green = current, amber = behind, red = out of date. N/A means the device does not report that component.",
                     "textStyle": {
                       "fontFamily": "Segoe (Bold)",
                       "fontSize": "9pt",
