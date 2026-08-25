@@ -1172,6 +1172,13 @@ function Set-LiveCredentials {
         Write-Warn2 "No app credentials supplied - skipping credential bind. Set them in the Service under the dataset > Data source credentials (Service principal)."
         return
     }
+
+    # Datasource-credential management and the refresh schedule are both restricted to the
+    # dataset OWNER, which is a distinct concept from workspace Admin - it is set to whichever
+    # identity's token last published/took over the dataset. Claim ownership for the deploying
+    # identity (SP or signed-in user) first so the calls below don't 401/403 against a stale owner.
+    Set-DatasetOwner -WsId $WsId -DatasetId $DatasetId
+
     $ds = Invoke-Http -Method GET -Resource $script:PowerBIRes -AllowNotFound `
             -Url "$script:PowerBIBase/groups/$WsId/datasets/$DatasetId/datasources"
     if (-not $ds -or -not $ds.value) {
@@ -1194,12 +1201,48 @@ function Set-LiveCredentials {
             encryptionAlgorithm = "None"
             privacyLevel        = "Organizational"
         } }
+        # Ownership can take a few seconds to propagate to the datasource-management authorization
+        # check, so retry the bind briefly on 401 (DMTS_NotEnoughPermissionToManangeDatasourceErrorCode)
+        # instead of failing on the first attempt.
+        $bound = $false
+        for ($try = 1; $try -le 4 -and -not $bound; $try++) {
+            try {
+                Invoke-Http -Method PATCH -Resource $script:PowerBIRes -Body $body `
+                    -Url "$script:PowerBIBase/gateways/$gw/datasources/$dsid" | Out-Null
+                Write-Ok "Service Principal bound ($u)"
+                $bound = $true
+            } catch {
+                if ($try -lt 4 -and $_.Exception.Message -match "DMTS_NotEnoughPermissionToManangeDatasourceErrorCode|HTTP 401") {
+                    Write-Warn2 "Owner permission not yet effective ($try/4) - waiting for propagation and retrying."
+                    Start-Sleep -Seconds ([Math]::Min(20, 5 * $try))
+                    continue
+                }
+                Write-Warn2 "Service Principal bind failed for $u : $($_.Exception.Message). Bind it manually in the Service (Data source credentials > Service principal)."
+            }
+        }
+    }
+}
+
+function Set-DatasetOwner {
+    <# Takes ownership of the dataset for the currently authenticated identity (SP or signed-in
+       user). Datasource-credential binding and the refresh schedule are both scoped to the
+       dataset owner, not just workspace membership, so this must run before those calls. Safe
+       to call repeatedly; a 401/403 here just means the identity isn't a workspace member yet
+       (handled earlier in the pipeline) or the take-over already belongs to this identity. #>
+    param([string]$WsId, [string]$DatasetId)
+    for ($try = 1; $try -le 3; $try++) {
         try {
-            Invoke-Http -Method PATCH -Resource $script:PowerBIRes -Body $body `
-                -Url "$script:PowerBIBase/gateways/$gw/datasources/$dsid" | Out-Null
-            Write-Ok "Service Principal bound ($u)"
+            Invoke-Http -Method POST -Resource $script:PowerBIRes `
+                -Url "$script:PowerBIBase/groups/$WsId/datasets/$DatasetId/Default.TakeOver" | Out-Null
+            Write-Ok "Dataset ownership claimed for the deploying identity."
+            return
         } catch {
-            Write-Warn2 "Service Principal bind failed for $u : $($_.Exception.Message). Bind it manually in the Service (Data source credentials > Service principal)."
+            if ($try -lt 3) {
+                Write-Warn2 "Take-over attempt $try/3 failed ($($_.Exception.Message)) - retrying."
+                Start-Sleep -Seconds (5 * $try)
+                continue
+            }
+            Write-Warn2 "Could not take over dataset ownership automatically: $($_.Exception.Message). Credential bind / refresh schedule may fail until an existing owner (or a Fabric admin) takes this over manually in the Service."
         }
     }
 }
@@ -1222,12 +1265,22 @@ function Set-RefreshSchedule {
         localTimeZoneId = $TimeZone
         notifyOption    = "NoNotification"
     } }
-    try {
-        Invoke-Http -Method PATCH -Resource $script:PowerBIRes -Body $body `
-            -Url "$script:PowerBIBase/groups/$WsId/datasets/$DatasetId/refreshSchedule" | Out-Null
-        Write-Ok "Scheduled refresh enabled ($($Times.Count)x/day, $TimeZone)"
-    } catch {
-        Write-Warn2 "Could not set the refresh schedule automatically: $($_.Exception.Message)"
+    # Restricted to the dataset owner, same as the credential bind above - Set-DatasetOwner
+    # should already have run, but retry briefly in case of propagation lag.
+    for ($try = 1; $try -le 3; $try++) {
+        try {
+            Invoke-Http -Method PATCH -Resource $script:PowerBIRes -Body $body `
+                -Url "$script:PowerBIBase/groups/$WsId/datasets/$DatasetId/refreshSchedule" | Out-Null
+            Write-Ok "Scheduled refresh enabled ($($Times.Count)x/day, $TimeZone)"
+            return
+        } catch {
+            if ($try -lt 3 -and $_.Exception.Message -match "dataset owner|403") {
+                Write-Warn2 "Owner permission not yet effective ($try/3) - waiting for propagation and retrying."
+                Start-Sleep -Seconds (5 * $try)
+                continue
+            }
+            Write-Warn2 "Could not set the refresh schedule automatically: $($_.Exception.Message)"
+        }
     }
 }
 
