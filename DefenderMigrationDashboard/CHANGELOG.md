@@ -6,6 +6,18 @@ versioning** — `YYYY.MM.DD.XX`, where `XX` is the two-digit release number wit
 at `01`, incrementing per release, reset to `01` at midnight). Earlier entries used date-stamped
 semantic versions and are kept as history.
 
+## [2026.08.20.19] - 2026-08-27
+
+### Added
+- A dashed 90% target line on the ranked control-coverage chart, so the
+  "Controls Below Target" KPI can be verified at a glance against the bars
+  rather than being an unexplained number.
+
+### Changed
+- Refreshed the pinned SHAs for `github/codeql-action` and `ossf/scorecard-action`.
+  Both upstream projects re-tagged their releases in place, so the pinned commits
+  no longer matched the tags they claim; each new SHA was verified against the
+  upstream annotated tag before applying.
 ## [2026.08.20.18] - 2026-08-20
 
 ### Fixed
