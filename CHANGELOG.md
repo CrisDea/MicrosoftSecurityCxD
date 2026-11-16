@@ -9,6 +9,8 @@
 - Linked the dashboard security guidance to the repository vulnerability
   reporting policy.
 - Linked the security policy directly to this repository's private reporting form.
+- Grouped Dependabot's CodeQL action updates and added a version consistency
+  check to prevent incompatible init and analyze steps.
 
 ### Changed
 - Updated the pinned CodeQL, Scorecard and artifact upload actions to their

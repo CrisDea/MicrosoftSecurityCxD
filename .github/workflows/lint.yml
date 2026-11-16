@@ -27,6 +27,10 @@ jobs:
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
 
+      - name: Check CodeQL action versions
+        shell: pwsh
+        run: ./.github/scripts/Test-CodeQLVersions.ps1
+
       - name: Run PSScriptAnalyzer
         shell: pwsh
         run: |
