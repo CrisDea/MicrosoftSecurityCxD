@@ -4,6 +4,9 @@
 
 Where credentials live, what the solution can and cannot read, and the exact permission set required.
 
+For reporting suspected vulnerabilities, see the
+[repository security policy](https://github.com/CrisDea/MicrosoftSecurityCxD/blob/main/SECURITY.md).
+
 ---
 
 ## Output & sharing
