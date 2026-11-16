@@ -2,9 +2,11 @@
 
 ## Reporting a vulnerability
 
-Please report suspected security vulnerabilities privately using GitHub's
-**[Private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)**
-feature for this repository (Security tab -> *Report a vulnerability*).
+Please [report suspected vulnerabilities privately](https://github.com/CrisDea/MicrosoftSecurityCxD/security/advisories/new)
+using GitHub's private vulnerability reporting feature for this repository
+(Security tab -> *Report a vulnerability*). See GitHub's
+[reporting guidance](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
+for details.
 
 Do **not** open a public issue for security reports.
 
